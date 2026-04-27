@@ -18,7 +18,7 @@ spec:
       - image: mongo
         name: mongo
         ports:
-        - name: mongo
+        - name: docker.io/mongo
           containerPort: 27017
         volumeMounts:
           - name: mongo-db

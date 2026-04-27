@@ -15,7 +15,7 @@ spec:
         name: mongo
     spec:
       containers:
-      - image: mongo:4.2
+      - image: registry.redhat.io/rhscl/mongodb-36-rhel7
         name: mongo
         ports:
         - name: mongo

@@ -3,12 +3,12 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: todo-app
-  name: todo-app
+    app: webapp-color
+  name: webapp-color
 spec:
   ports:
     - protocol: TCP
       port: 8080
       targetPort: 8080
   selector:
-    app: todo-app
+    app: webapp-color

@@ -3,21 +3,21 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: todo-app
-  name: todo-app
+    app: webapp-color
+  name: webapp-color
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: todo-app
+      app: webapp-color
   template:
     metadata:
       labels:
-        app: todo-app
+        app: webapp-color
     spec:
       containers:
-        - name: todo-app
-          image: registry.ocp4.example.com:8443/redhattraining/todo-angular:v1.1
+        - name: webapp-color
+          image: docker.io/kodekloud/webapp-color:latest
           resources:
             requests:
               cpu: 10m
@@ -27,24 +27,7 @@ spec:
               memory: 512Mi
           ports:
             - containerPort: 8080
-          readinessProbe:
-            initialDelaySeconds: 5
-            httpGet:
-              path: /
-              port: 8080
-          livenessProbe:
-            initialDelaySeconds: 15
-            httpGet:
-              path: /
-              port: 8080
-          securityContext:
-            capabilities:
-              drop:
-                - ALL
-            allowPrivilegeEscalation: false
-          imagePullPolicy: Always
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
-      automountServiceAccountToken: false
+              protocol: TCP
+          env:
+            - name: APP_COLOR
+              value: blue

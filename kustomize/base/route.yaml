@@ -9,3 +9,5 @@ spec:
   to:
     kind: Service
     name: webapp-color
+  tls:
+    termination: edge

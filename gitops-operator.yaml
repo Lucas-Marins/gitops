@@ -11,7 +11,7 @@ spec:
     name: openshift-gitops-operator
     namespace: openshift-gitops-operator
     channel: latest
-    source: gls-catalog-cs
+    source: redhat-operators
     sourceNamespace: openshift-marketplace
     startingCSV: openshift-gitops-operator.v1.16.2
   upgradeApproval: Automatic

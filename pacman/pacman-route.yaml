@@ -5,7 +5,8 @@ metadata:
   labels:
     app.kubernetes.io/name: pacman
 spec:
-  path: "/"
   to:
     kind: Service
     name: pacman
+  tls:
+    termination: edge

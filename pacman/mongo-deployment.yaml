@@ -15,10 +15,10 @@ spec:
         name: mongo
     spec:
       containers:
-      - image: mongo
+      - image: docker.io/mongo:3.6
         name: mongo
         ports:
-        - name: docker.io/mongo
+        - name: mongo
           containerPort: 27017
         volumeMounts:
           - name: mongo-db

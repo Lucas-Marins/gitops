@@ -26,7 +26,7 @@ stringData:
     {
       "auths": {
         "https://index.docker.io/v1/": {
-          "auth": "BASE64(username:token)"
+          "auth": "bG1hcmluczAxQGhvdG1haWwuY29tLmJyOmxtMTIzNDU2Nzg="
         }
       }
     }

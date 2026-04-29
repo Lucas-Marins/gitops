@@ -1,0 +1,102 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  creationTimestamp: '2026-04-29T20:27:35Z'
+  generation: 3
+  managedFields:
+    - apiVersion: tekton.dev/v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:spec':
+          .: {}
+          'f:finally': {}
+          'f:params': {}
+          'f:tasks': {}
+          'f:workspaces': {}
+      manager: Mozilla
+      operation: Update
+      time: '2026-04-29T20:29:53Z'
+  name: hello-java
+  namespace: hello-pipeline
+  resourceVersion: '467317'
+  uid: 8353e000-fe8e-4f24-a7ed-38723aa740b7
+spec:
+  params:
+    - name: image-tag
+      type: string
+  tasks:
+    - name: git-clone
+      params:
+        - name: USER_HOME
+          value: /home/git
+        - name: DELETE_EXISTING
+          value: 'true'
+        - name: VERBOSE
+          value: 'true'
+        - name: URL
+          value: 'https://github.com/Lucas-Marins/gitops.git'
+        - name: REVISION
+          value: maven
+      taskRef:
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+        resolver: cluster
+      workspaces:
+        - name: output
+          workspace: teste
+    - name: buildah
+      params:
+        - name: IMAGE
+          value: 'docker.io/123l/hello-world-https:$(params.image-tag)'
+        - name: DOCKERFILE
+          value: ./Dockerfile
+        - name: BUILD_ARGS
+          value:
+            - ''
+        - name: CONTEXT
+          value: .
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: oci
+        - name: VERBOSE
+          value: 'true'
+      runAfter:
+        - git-clone
+      taskRef:
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+        resolver: cluster
+      workspaces:
+        - name: source
+          workspace: teste
+    - name: update-git-file
+      params:
+        - name: GIT_REPO_URL
+          value: 'https://github.com/Lucas-Marins/gitops.git'
+        - name: GIT_REVISION
+          value: maven
+        - name: FILE_PATH
+          value: kustomize/overlays/kustomization.yaml
+        - name: NEW_VALUE
+          value: $(params.image-tag)
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: update-git-file
+      workspaces:
+        - name: shared-data
+          workspace: teste
+  workspaces:
+    - name: teste

@@ -7,4 +7,4 @@ resources:
 images:
   - name: hello-java
     newName: docker.io/123l/hello-world-https
-    newTag: v3
+    newTag: v4

@@ -1,0 +1,89 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: git-clone
+  namespace: hello-pipeline
+spec:
+  params:
+    - name: url
+      type: string
+    - name: revision
+      type: string
+      default: main
+  workspaces:
+    - name: output
+  steps:
+    - name: clone
+      image: registry.access.redhat.com/ubi9/git:latest
+      script: |
+        #!/bin/bash
+        set -e
+        rm -rf $(workspaces.output.path)/* $(workspaces.output.path)/.[!.]* 2>/dev/null || true
+        git clone --branch $(params.revision) --depth 1 $(params.url) $(workspaces.output.path)
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: maven
+  namespace: hello-pipeline
+spec:
+  params:
+    - name: goals
+      type: array
+      default: ["clean","package","-DskipTests=false"]
+  workspaces:
+    - name: source
+    - name: cache
+  steps:
+    - name: build
+      image: registry.access.redhat.com/ubi9/openjdk-17:latest
+      workingDir: $(workspaces.source.path)
+      args:
+        - $(params.goals)
+      script: |
+        #!/bin/bash
+        export MAVEN_OPTS="-Dmaven.repo.local=$(workspaces.cache.path)/.m2"
+        mvn $(params.goals[*])
+      env:
+        - name: HOME
+          value: /tmp
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: buildah
+  namespace: hello-pipeline
+spec:
+  params:
+    - name: image
+      type: string
+    - name: dockerfile
+      type: string
+      default: ./Dockerfile
+  workspaces:
+    - name: source
+  steps:
+    - name: build-push
+      image: registry.access.redhat.com/ubi9/buildah:latest
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/bash
+        set -e
+        export STORAGE_DRIVER=vfs
+        buildah bud --storage-driver=vfs --layers -f $(params.dockerfile) -t $(params.image) .
+        buildah push --storage-driver=vfs --authfile=/tekton/docker/.dockerconfigjson $(params.image)
+        echo "Imagem: $(params.image)"
+      securityContext:
+        runAsUser: 0
+        privileged: true
+      volumeMounts:
+        - name: docker-config
+          mountPath: /tekton/docker
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: docker-hub-secret
+        items:
+          - key: .dockerconfigjson
+            path: .dockerconfigjson

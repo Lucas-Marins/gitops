@@ -1,0 +1,27 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: hello-java-run-
+  namespace: hello-pipeline
+spec:
+  pipelineRef:
+    name: hello-java
+  params:
+    - name: git-url
+      value: "https://github.com/SEU_USUARIO/hello-java.git"
+    - name: image-name
+      value: "docker.io/SEU_USUARIO/hello-java"
+    - name: image-tag
+      value: "v1"
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+    - name: maven-cache
+      persistentVolumeClaim:
+        claimName: maven-cache
+  serviceAccountName: pipeline-sa

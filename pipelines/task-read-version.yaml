@@ -1,0 +1,21 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: read-version
+  namespace: hello-java
+spec:
+  results:
+    - name: version
+      type: string
+  steps:
+    - computeResources: {}
+      image: 'registry.access.redhat.com/ubi9-minimal:latest'
+      name: read
+      script: |
+        #!/bin/bash
+        VERSION=$(cat VERSION)
+        echo -n "$VERSION" > $(results.version.path)
+        echo "Versão detectada: $VERSION"
+      workingDir: $(workspaces.source.path)
+  workspaces:
+    - name: source

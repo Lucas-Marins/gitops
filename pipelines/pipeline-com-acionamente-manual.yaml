@@ -1,25 +1,8 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  creationTimestamp: '2026-04-29T20:27:35Z'
-  generation: 3
-  managedFields:
-    - apiVersion: tekton.dev/v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:spec':
-          .: {}
-          'f:finally': {}
-          'f:params': {}
-          'f:tasks': {}
-          'f:workspaces': {}
-      manager: Mozilla
-      operation: Update
-      time: '2026-04-29T20:29:53Z'
   name: hello-java
   namespace: hello-pipeline
-  resourceVersion: '467317'
-  uid: 8353e000-fe8e-4f24-a7ed-38723aa740b7
 spec:
   params:
     - name: image-tag

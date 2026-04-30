@@ -1,0 +1,87 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: new-pipeline
+  namespace: hello-java
+spec:
+  params:
+    - default: 'https://github.com/Lucas-Marins/gitops.git'
+      name: git-url
+      type: string
+    - default: maven
+      name: git-revision
+      type: string
+  tasks:
+    - name: git-clone
+      params:
+        - name: USER_HOME
+          value: /home/git
+        - name: DELETE_EXISTING
+          value: 'true'
+        - name: VERBOSE
+          value: 'true'
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+      taskRef:
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+        resolver: cluster
+      workspaces:
+        - name: output
+          workspace: workshop
+    - name: read-version
+      runAfter:
+        - git-clone
+      taskRef:
+        kind: Task
+        name: read-version
+      workspaces:
+        - name: source
+          workspace: workshop
+    - name: buildah
+      params:
+        - name: IMAGE
+          value: 'docker.io/123l/hello-world-https:$(tasks.read-version.results.version)'
+        - name: DOCKERFILE
+          value: ./Dockerfile
+      runAfter:
+        - read-version
+      taskRef:
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+        resolver: cluster
+      workspaces:
+        - name: source
+          workspace: workshop
+    - name: update-git-file
+      params:
+        - name: GIT_REPO_URL
+          value: 'https://github.com/Lucas-Marins/gitops.git'
+        - name: GIT_REVISION
+          value: maven
+        - name: FILE_PATH
+          value: kustomize/overlays/kustomization.yaml
+        - name: NEW_VALUE
+          value: $(tasks.read-version.results.version)
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: update-git-file
+      workspaces:
+        - name: shared-data
+          workspace: workshop
+  workspaces:
+    - name: workshop

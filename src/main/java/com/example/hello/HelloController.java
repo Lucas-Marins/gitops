@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class HelloController {
     @GetMapping("/hello")
     public String hello() {
-        return "Hello from OpenShift Teste Event Webhok";
+        return "Hello from OpenShift Teste Event teste";
     }
 }

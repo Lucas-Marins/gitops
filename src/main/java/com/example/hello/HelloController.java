@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class HelloController {
     @GetMapping("/hello")
     public String hello() {
-        return "Hello from OpenShift Teste Event version from 13.0.0";
+        return "testando versao 13.0.1";
     }
 }

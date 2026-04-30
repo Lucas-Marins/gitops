@@ -7,7 +7,14 @@ metadata:
 spec:
   serviceAccountName: pipeline
   triggers:
-    - bindings:
+    - name: maven-push-trigger
+      interceptors:
+        - ref:
+            name: cel
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/maven'"
+      bindings:
         - ref: github-push-binding
       template:
         ref: hello-java-trigger-template

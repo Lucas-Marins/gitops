@@ -1,0 +1,56 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: update-git-file
+  namespace: hello-pipeline
+spec:
+  params:
+    - name: GIT_REPO_URL
+      type: string
+    - default: main
+      name: GIT_REVISION
+      type: string
+    - default: kustomize/overlays/dev/kustomization.yaml
+      name: FILE_PATH
+      type: string
+    - name: NEW_VALUE
+      type: string
+  steps:
+    - computeResources: {}
+      env:
+        - name: USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: github-secret
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: github-secret
+        - name: GIT_REPO_URL
+          value: $(params.GIT_REPO_URL)
+        - name: GIT_REVISION
+          value: $(params.GIT_REVISION)
+        - name: FILE_PATH
+          value: $(params.FILE_PATH)
+        - name: NEW_VALUE
+          value: $(params.NEW_VALUE)
+      image: 'alpine/git:v2.26.2'
+      name: update-and-push
+      script: |
+        #!/bin/sh
+        set -e
+        git config --global user.email "tekton@example.com"
+        git config --global user.name "Tekton Pipeline"
+        AUTH_URL=$(echo "$GIT_REPO_URL" | sed "s|https://|https://$USERNAME:$PASSWORD@|")
+        git clone "$AUTH_URL" repo
+        cd repo
+        git checkout "$GIT_REVISION"
+        git pull "$AUTH_URL" "$GIT_REVISION"
+        sed -i "s/newTag: .*/newTag: $NEW_VALUE/" "$FILE_PATH"
+        git add "$FILE_PATH"
+        git commit -m "ci: update image to $NEW_VALUE"
+        git push "$AUTH_URL" "$GIT_REVISION"
+  workspaces:
+    - name: shared-data

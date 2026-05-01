@@ -2,12 +2,11 @@ apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
 metadata:
   name: example
-  labels:
-    instancetype.kubevirt.io/default-instancetype: u1.medium
-    instancetype.kubevirt.io/default-preference: fedora
   annotations:
-    cdi.kubevirt.io/storage.bind.immediate.requested: 'true'
-  namespace: default
+    cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+    kubevirt.ui/provider: fedora
+    argocd.argoproj.io/sync-wave: "2"
+  namespace: virt-manage
 spec:
   source:
     registry:

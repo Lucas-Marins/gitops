@@ -46,12 +46,17 @@ spec:
             value: $(tt.params.git-revision)
         workspaces:
           - name: workshop
-            volumeClaimTemplate:
-              spec:
-                accessModes: ["ReadWriteOnce"]
-                resources:
-                  requests:
-                    storage: 2Gi
+            persistentVolumeClaim:
+               claimName: app-hello-java
+            
+            # Se quiser criar um novo PVC para cada PipelineRun, descomente a seção abaixo e comente a seção acima.
+            # volumeClaimTemplate:
+            #   spec:
+            #     accessModes: ["ReadWriteOnce"]
+            #     resources:
+            #       requests:
+            #         storage: 2Gi
+
         serviceAccountName: pipeline
 ---
 apiVersion: triggers.tekton.dev/v1beta1

@@ -1,7 +1,7 @@
 apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
 metadata:
-  name: example
+  name: fedora
   annotations:
     cdi.kubevirt.io/storage.bind.immediate.requested: "true"
     kubevirt.ui/provider: fedora

@@ -1,18 +1,18 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: vm-fedora-lucas
+  name: vm-lucas
   namespace: virt-manage
   annotations:
     argocd.argoproj.io/sync-wave: "3"
 spec:
   dataVolumeTemplates:
     - metadata:
-        name: vm-fedora-lucas
+        name: vm-lucas
       spec:
         sourceRef:
           kind: DataSource
-          name: vm-fedora-lucas
+          name: vm-lucas
           namespace: openshift-virtualization-os-images
         storage:
           accessModes:
@@ -24,7 +24,7 @@ spec:
   instancetype:
     name: u1.small
   preference:
-    name: vm-fedora-lucas
+    name: vm-lucas
   runStrategy: Manual
   template:
     metadata:
@@ -44,5 +44,5 @@ spec:
       subdomain: headless
       volumes:
         - dataVolume:
-            name: vm-fedora-lucas
+            name: vm-lucas
           name: rootdisk

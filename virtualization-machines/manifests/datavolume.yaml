@@ -1,7 +1,7 @@
 apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
 metadata:
-  name: fedora
+  name: vm-fedora-lucas
   annotations:
     cdi.kubevirt.io/storage.bind.immediate.requested: "true"
     kubevirt.ui/provider: fedora

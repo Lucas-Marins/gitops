@@ -1,21 +1,18 @@
 apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
 metadata:
+  name: example
+  labels:
+    instancetype.kubevirt.io/default-instancetype: u1.medium
+    instancetype.kubevirt.io/default-preference: fedora
   annotations:
-    cdi.kubevirt.io/storage.bind.immediate.requested: "true"
-    kubevirt.ui/provider: fedora
-    argocd.argoproj.io/sync-wave: "2"
-  name: fedora
-  namespace: virt-manage
+    cdi.kubevirt.io/storage.bind.immediate.requested: 'true'
+  namespace: default
 spec:
-  pvc:
-    accessModes:
-    - ReadWriteOnce
-    resources:
-      requests:
-        storage: 10Gi
-    volumeMode: Filesystem
   source:
     registry:
-      url: docker://registry.ocp4.example.com:8443/containerdisks/fedora:latest
-      pullMethod: node
+      url: https://dl.fedoraproject.org/pub/fedora/linux/releases/39/Cloud/x86_64/images/Fedora-Cloud-Base-39-1.5.x86_64.qcow2
+  storage:
+    resources:
+      requests:
+        storage: 30Gi

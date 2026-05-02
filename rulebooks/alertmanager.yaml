@@ -1,0 +1,14 @@
+---
+- name: Monitorar URL e reiniciar httpd se cair
+  hosts: localhost
+  sources:
+    - ansible.eda.alertmanager:
+          host: 0.0.0.0
+          port: 8000
+  rules:
+    - name: Alerta de URL fora do ar - reiniciar httpd
+      condition: event.alertmanager.alerts[0].labels.url == "https://app-linuxvm.apps.cluster-k4x6j.dynamic.redhatworkshops.io/"
+      action:
+        run_job_template:
+          name: "Restart HTTPD"
+          organization: "Default"        

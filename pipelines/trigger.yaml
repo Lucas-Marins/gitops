@@ -3,7 +3,6 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
   name: github-listener
-  namespace: hello-java
 spec:
   serviceAccountName: pipeline
   triggers:
@@ -23,7 +22,6 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
   name: hello-java-trigger-template
-  namespace: hello-java
 spec:
   params:
     - name: git-url
@@ -33,7 +31,6 @@ spec:
       kind: PipelineRun
       metadata:
         generateName: new-pipeline-run-
-        namespace: hello-java
       spec:
         pipelineRef:
           name: new-pipeline

@@ -1,0 +1,53 @@
+---
+- name: Criar chamado no GLPI via Basic Auth
+  hosts: localhost
+  gather_facts: no
+  vars:
+    glpi_url: "http://glpi-glpi-lab.apps.cluster-k4x6j.dynamic.redhatworkshops.io"
+    glpi_user: "glpi"
+    glpi_pass: "glpi"
+
+  tasks:
+    - name: Iniciar sessão no GLPI (Basic Auth)
+      ansible.builtin.uri:
+        url: "{{ glpi_url }}/apirest.php/initSession"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        url_username: "{{ glpi_user }}"
+        url_password: "{{ glpi_pass }}"
+        force_basic_auth: yes
+        status_code: 200
+      register: session
+
+    - name: Criar ticket no GLPI
+      ansible.builtin.uri:
+        url: "{{ glpi_url }}/apirest.php/Ticket"
+        method: POST
+        headers:
+          Session-Token: "{{ session.json.session_token }}"
+          Content-Type: "application/json"
+        body:
+          input:
+            name: "Incidente via Ansible - Basic Auth"
+            content: |
+              <p>Chamado criado com usuário e senha via API REST.</p>
+            type: 1
+            urgency: 3
+            impact: 3
+            requesttypes_id: 6
+        body_format: json
+        status_code: 201
+      register: ticket
+
+    - name: Mostrar ID do ticket
+      ansible.builtin.debug:
+        msg: "Ticket criado! ID: {{ ticket.json.id }}"
+
+    - name: Encerrar sessão
+      ansible.builtin.uri:
+        url: "{{ glpi_url }}/apirest.php/killSession"
+        method: GET
+        headers:
+          Session-Token: "{{ session.json.session_token }}"
+      ignore_errors: yes

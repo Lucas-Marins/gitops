@@ -22,6 +22,21 @@
       register: session
       no_log: true
 
+    - name: Adicionar follow-up com infos
+      ansible.builtin.uri:
+        url: "{{ glpi_url }}/apirest.php/Ticket/{{ glpi_ticket_id }}/TicketFollowup"
+        method: POST
+        headers:
+          Session-Token: "{{ session.json.session_token }}"
+          Content-Type: "application/json"
+        body:
+          input:
+            content: |
+              <p><strong>VM provisionada!</strong></p>
+        body_format: json
+        validate_certs: no
+        status_code: [201]
+
     - name: Fechar chamado
       ansible.builtin.uri:
         url: "{{ glpi_url }}/apirest.php/Ticket/{{ glpi_ticket_id }}"
@@ -32,7 +47,7 @@
         body:
           input:
             status: 6
-            solution: "<p>VM criada com sucesso.</p>"
+            solution: "<p>VM provisionada!</p>"
         body_format: json
         validate_certs: no
         status_code: [200]

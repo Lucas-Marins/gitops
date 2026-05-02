@@ -45,6 +45,12 @@
       ansible.builtin.debug:
         msg: "Ticket criado! ID: {{ ticket.json.id }}"
 
+    - name: Exportar ID do chamado para o Workflow
+      ansible.builtin.set_stats:
+        data:
+          glpi_ticket_id: "{{ ticket.json.id }}"
+        per_host: no
+        
     - name: Encerrar sessão
       ansible.builtin.uri:
         url: "{{ glpi_url }}/apirest.php/killSession"

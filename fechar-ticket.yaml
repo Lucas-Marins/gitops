@@ -1,0 +1,47 @@
+---
+- name: Fechar chamado no GLPI com infos da VM
+  hosts: localhost
+  gather_facts: no
+  vars:
+    glpi_url: "https://glpi-glpi-lab.apps.cluster-ct5px.dynamic.redhatworkshops.io"
+    glpi_user: "glpi"
+    glpi_pass: "glpi"
+
+  tasks:
+    - name: Login GLPI
+      ansible.builtin.uri:
+        url: "{{ glpi_url }}/apirest.php/initSession"
+        method: GET
+        headers:
+          Content-Type: "application/json"
+        url_username: "{{ glpi_user }}"
+        url_password: "{{ glpi_pass }}"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: [200]
+      register: session
+      no_log: true
+
+    - name: Fechar chamado
+      ansible.builtin.uri:
+        url: "{{ glpi_url }}/apirest.php/Ticket/{{ glpi_ticket_id }}"
+        method: PUT
+        headers:
+          Session-Token: "{{ session.json.session_token }}"
+          Content-Type: "application/json"
+        body:
+          input:
+            status: 6
+            solution: "<p>VM criada com sucesso.</p>"
+        body_format: json
+        validate_certs: no
+        status_code: [200]
+
+    - name: Logout GLPI
+      ansible.builtin.uri:
+        url: "{{ glpi_url }}/apirest.php/killSession"
+        method: GET
+        headers:
+          Session-Token: "{{ session.json.session_token }}"
+        validate_certs: no
+      ignore_errors: yes

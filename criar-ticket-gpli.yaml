@@ -30,9 +30,9 @@
           Content-Type: "application/json"
         body:
           input:
-            name: "Incidente via Ansible - Basic Auth"
+            name: "Chamado para criação de VM"
             content: |
-              <p>Chamado criado com usuário e senha via API REST.</p>
+              <p>Chamado criado com destino para criação de VM e senha via API REST.</p>
             type: 1
             urgency: 3
             impact: 3

@@ -6,7 +6,7 @@
         url: "https://app-linuxvm.apps.cluster-k4x6j.dynamic.redhatworkshops.io/"
         method: GET
         verify_ssl: false
-        interval: 1         
+        delay: 5         
         
   rules:
     - name: URL fora do ar - reiniciar httpd

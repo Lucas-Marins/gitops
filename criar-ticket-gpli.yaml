@@ -3,7 +3,7 @@
   hosts: localhost
   gather_facts: no
   vars:
-    glpi_url: "https://glpi-glpi-lab.apps.cluster-ct5px.dynamic.redhatworkshops.io/"
+    glpi_url: "https://glpi-glpi-lab.apps.cluster-ct5px.dynamic.redhatworkshops.io"
     glpi_user: "glpi"
     glpi_pass: "glpi"
 
@@ -12,6 +12,7 @@
       ansible.builtin.uri:
         url: "{{ glpi_url }}/apirest.php/initSession"
         method: GET
+        validate_certs: no
         headers:
           Content-Type: "application/json"
         url_username: "{{ glpi_user }}"

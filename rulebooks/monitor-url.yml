@@ -3,7 +3,7 @@
   hosts: localhost
   sources:
     - ansible.eda.url_check:
-        url: 
+        urls: 
          - https://app-linuxvm.apps.cluster-k4x6j.dynamic.redhatworkshops.io
         delay: 5         
         

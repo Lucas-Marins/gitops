@@ -34,12 +34,7 @@
             itemtype: "Ticket"
             items_id: "{{ glpi_ticket_id }}"
             content: |
-              <p><strong>VM provisionada!</strong></p>
-              <ul>
-                <li>Nome: {{ vm_name | default('N/A') }}</li>
-                <li>IP: {{ vm_ip | default('N/A') }}</li>
-                <li>Usuário: {{ vm_user | default('fedora') }}</li>
-              </ul>
+              <p><strong>VMs provisionada!</strong></p>
         body_format: json
         validate_certs: no
         status_code: [201]

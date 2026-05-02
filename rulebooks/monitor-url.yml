@@ -1,0 +1,17 @@
+---
+- name: Monitorar URL e reiniciar httpd se cair
+  hosts: all
+  sources:
+    - ansible.eda.url_check:
+        url: "https://app-linuxvm.apps.cluster-k4x6j.dynamic.redhatworkshops.io/"
+        method: GET
+        verify_ssl: false
+        interval: 1         # Checa a cada 30 segundos
+
+  rules:
+    - name: URL fora do ar - reiniciar httpd
+      condition: event.url_check.status != 200
+      action:
+        run_job_template:
+          name: "Remediação - Restart HTTPD"
+          organization: "Default"

@@ -1,0 +1,11 @@
+---
+- name: Verificar URL e reiniciar httpd se necessário
+  hosts: all         # Ou o inventory com a VM
+  become: yes
+  gather_facts: false
+
+  tasks:
+     - name: Reiniciar httpd se URL estiver fora
+       ansible.builtin.systemd:
+        name: httpd
+        state: restarted

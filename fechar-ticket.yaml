@@ -22,17 +22,24 @@
       register: session
       no_log: true
 
-    - name: Adicionar follow-up com infos
+    - name: Adicionar follow-up (ITILFollowup via endpoint genérico)
       ansible.builtin.uri:
-        url: "{{ glpi_url }}/apirest.php/Ticket/{{ glpi_ticket_id }}/TicketFollowup"
+        url: "{{ glpi_url }}/apirest.php/ITILFollowup"
         method: POST
         headers:
           Session-Token: "{{ session.json.session_token }}"
           Content-Type: "application/json"
         body:
           input:
+            itemtype: "Ticket"
+            items_id: "{{ glpi_ticket_id }}"
             content: |
               <p><strong>VM provisionada!</strong></p>
+              <ul>
+                <li>Nome: {{ vm_name | default('N/A') }}</li>
+                <li>IP: {{ vm_ip | default('N/A') }}</li>
+                <li>Usuário: {{ vm_user | default('fedora') }}</li>
+              </ul>
         body_format: json
         validate_certs: no
         status_code: [201]

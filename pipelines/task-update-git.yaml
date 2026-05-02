@@ -47,9 +47,10 @@ spec:
         git clone "$AUTH_URL" repo
         cd repo
         git checkout "$GIT_REVISION"
+        git pull "$AUTH_URL" "$GIT_REVISION"
         sed -i "s/newTag: .*/newTag: $NEW_VALUE/" "$FILE_PATH"
         git add "$FILE_PATH"
-        git commit -m "ci: update image to $NEW_VALUE"
+        git commit -m "ci: update image to $NEW_VALUE [skip ci]"
         git push "$AUTH_URL" "$GIT_REVISION"
   workspaces:
     - name: shared-data

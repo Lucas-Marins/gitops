@@ -12,7 +12,7 @@ spec:
             name: cel
           params:
             - name: filter
-              value: "body.ref == 'refs/heads/maven'"
+              value: 'body.ref == ''refs/heads/maven'' && !body.head_commit.message.contains(''[skip ci]'')'
       bindings:
         - ref: github-push-binding
       template:

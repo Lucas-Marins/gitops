@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class HelloController {
     @GetMapping("/hello")
     public String hello() {
-        return "Subindo versao 1.0.1";
+        return "Hello from versão 1.0.5";
     }
 }

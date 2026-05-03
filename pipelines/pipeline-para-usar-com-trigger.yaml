@@ -1,8 +1,7 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: new-pipeline
-  namespace: hello-java
+  name: pipeline-java
 spec:
   params:
     - default: 'https://github.com/Lucas-Marins/gitops.git'

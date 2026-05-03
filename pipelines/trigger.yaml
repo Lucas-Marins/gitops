@@ -33,7 +33,7 @@ spec:
         generateName: new-pipeline-run-
       spec:
         pipelineRef:
-          name: new-pipeline
+          name: pipeline-java
         params:
           - name: git-url
             value: $(tt.params.git-url)
@@ -44,7 +44,7 @@ spec:
         workspaces:
           - name: workshop
             persistentVolumeClaim:
-               claimName: app-hello-java
+               claimName: app-source-java
             
             # Se quiser criar um novo PVC para cada PipelineRun, descomente a seção abaixo e comente a seção acima.
             # volumeClaimTemplate:
@@ -60,7 +60,6 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
 metadata:
   name: github-push-binding
-  namespace: hello-java
 spec:
   params:
     - name: git-url

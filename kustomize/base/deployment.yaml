@@ -30,4 +30,4 @@ spec:
               protocol: TCP
           env:
             - name: APP_COLOR
-              value: blue
+              value: red

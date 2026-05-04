@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class HelloController {
     @GetMapping("/hello")
     public String hello() {
-        return "Hello from versão 1.0.0 do Workshop de GitOps!";
+        return "Hello from versão 1.0.1 do Workshop de GitOps!!!!!!!!!!!!!";
     }
 }

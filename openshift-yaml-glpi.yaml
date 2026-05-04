@@ -60,7 +60,7 @@ spec:
     spec:
       containers:
       - name: glpi
-        image: docker.io/glpi/glpi:latest
+        image: docker.io/glpi/glpi:10.0.25
         env:
         - name: GLPI_DB_HOST
           value: glpi-mariadb

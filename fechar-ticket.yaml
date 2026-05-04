@@ -3,7 +3,7 @@
   hosts: localhost
   gather_facts: no
   vars:
-    glpi_url: "https://glpi-glpi-lab.apps.cluster-ct5px.dynamic.redhatworkshops.io"
+    glpi_url: "https://glpi-glpi.apps.cluster-vl7bq.dynamic.redhatworkshops.io"
     glpi_user: "glpi"
     glpi_pass: "glpi"
 

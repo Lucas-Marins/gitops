@@ -26,7 +26,6 @@
       loop_control:
         label: "{{ item }}"
       vars:
-        # 🔥 Aqui está a mágica:
         vm_name: "{{ item | regex_replace('^linuxvm-', '') }}"
 
     - name: Aguardar snapshot ficar pronto
@@ -49,33 +48,48 @@
         vm_name: "{{ item | regex_replace('^linuxvm-', '') }}"
 
 
-# - name: Patch das VMs via SSH
-#   hosts: vm_patch
-#   become: yes
-#   serial: 1
-#   gather_facts: yes
+---
 
-#   tasks:
+- name: Patch das VMs e coleta de dados
+  hosts: all
+  become: yes
+  gather_facts: yes
 
-#     - name: Atualizar todos os pacotes (RHEL)
-#       ansible.builtin.dnf:
-#         name: "*"
-#         state: latest
+  tasks:
 
-#     - name: Verificar se precisa reboot
-#       ansible.builtin.command: needs-restarting -r
-#       register: reboot_required
-#       ignore_errors: true
-#       changed_when: reboot_required.rc != 0
+    - name: Listar updates disponíveis (ANTES)
+      ansible.builtin.command: dnf check-update
+      register: updates_before
+      ignore_errors: true
 
-#     - name: Reboot se necessário
-#       ansible.builtin.reboot:
-#         msg: "Reboot após patch automático"
-#         reboot_timeout: 600
-#       when: reboot_required.rc != 0
+    - name: Atualizar pacotes
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+      register: dnf_result
 
-#     - name: Health check simples
-#       ansible.builtin.uri:
-#         url: "http://localhost"
-#         status_code: 200
-#       ignore_errors: true
+    - name: Listar updates disponíveis (DEPOIS)
+      ansible.builtin.command: dnf check-update
+      register: updates_after
+      ignore_errors: true
+
+    - name: Verificar reboot necessário
+      ansible.builtin.command: needs-restarting -r
+      register: reboot_required
+      ignore_errors: true
+      changed_when: reboot_required.rc != 0
+
+    - name: Reboot se necessário
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+      when: reboot_required.rc != 0
+      register: reboot_done
+
+    - name: Consolidar resultado por host
+      ansible.builtin.set_fact:
+        patch_report:
+          hostname: "{{ inventory_hostname }}"
+          updates_before: "{{ updates_before.stdout_lines | default([]) }}"
+          updates_after: "{{ updates_after.stdout_lines | default([]) }}"
+          packages_changed: "{{ dnf_result.changed }}"
+          reboot_performed: "{{ reboot_done is defined and reboot_done is changed }}"

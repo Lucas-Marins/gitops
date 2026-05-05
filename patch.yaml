@@ -15,20 +15,25 @@
           apiVersion: snapshot.kubevirt.io/v1beta1
           kind: VirtualMachineSnapshot
           metadata:
-            name: "{{ item }}-snapshot-{{ snapshot_suffix }}"
+            name: "{{ vm_name }}-snapshot-{{ snapshot_suffix }}"
             namespace: linuxvm
           spec:
             source:
               apiGroup: kubevirt.io
               kind: VirtualMachine
-              name: "{{ item }}"
+              name: "{{ vm_name }}"
       loop: "{{ groups['namespace_linuxvm'] }}"
+      loop_control:
+        label: "{{ item }}"
+      vars:
+        # 🔥 Aqui está a mágica:
+        vm_name: "{{ item | regex_replace('^linuxvm-', '') }}"
 
     - name: Aguardar snapshot ficar pronto
       kubernetes.core.k8s_info:
         api_version: snapshot.kubevirt.io/v1beta1
         kind: VirtualMachineSnapshot
-        name: "{{ item }}-snapshot-{{ snapshot_suffix }}"
+        name: "{{ vm_name }}-snapshot-{{ snapshot_suffix }}"
         namespace: linuxvm
       register: snapshot_status
       until: >
@@ -37,9 +42,12 @@
         snapshot_status.resources[0].status.readyToUse | default(false)
       retries: 20
       delay: 15
-      loop: "{{ groups['vm_patch'] }}"
+      loop: "{{ groups['namespace_linuxvm'] }}"
       loop_control:
         label: "{{ item }}"
+      vars:
+        vm_name: "{{ item | regex_replace('^linuxvm-', '') }}"
+
 
 # - name: Patch das VMs via SSH
 #   hosts: vm_patch

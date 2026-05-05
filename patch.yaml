@@ -1,0 +1,75 @@
+- name: Snapshot das VMs no OpenShift Virtualization
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+
+    - name: Gerar timestamp único
+      ansible.builtin.set_fact:
+        snapshot_suffix: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+    - name: Criar snapshot das VMs
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: snapshot.kubevirt.io/v1beta1
+          kind: VirtualMachineSnapshot
+          metadata:
+            name: "{{ item }}-snapshot-{{ snapshot_suffix }}"
+            namespace: linuxvm
+          spec:
+            source:
+              apiGroup: kubevirt.io
+              kind: VirtualMachine
+              name: "{{ item }}"
+      loop: "{{ groups['namespace_linuxvm'] }}"
+
+    - name: Aguardar snapshot ficar pronto
+      kubernetes.core.k8s_info:
+        api_version: snapshot.kubevirt.io/v1beta1
+        kind: VirtualMachineSnapshot
+        name: "{{ item }}-snapshot-{{ snapshot_suffix }}"
+        namespace: linuxvm
+      register: snapshot_status
+      until: >
+        snapshot_status.resources is defined and
+        snapshot_status.resources | length > 0 and
+        snapshot_status.resources[0].status.readyToUse | default(false)
+      retries: 20
+      delay: 15
+      loop: "{{ groups['vm_patch'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+---
+
+# - name: Patch das VMs via SSH
+#   hosts: vm_patch
+#   become: yes
+#   serial: 1
+#   gather_facts: yes
+
+#   tasks:
+
+#     - name: Atualizar todos os pacotes (RHEL)
+#       ansible.builtin.dnf:
+#         name: "*"
+#         state: latest
+
+#     - name: Verificar se precisa reboot
+#       ansible.builtin.command: needs-restarting -r
+#       register: reboot_required
+#       ignore_errors: true
+#       changed_when: reboot_required.rc != 0
+
+#     - name: Reboot se necessário
+#       ansible.builtin.reboot:
+#         msg: "Reboot após patch automático"
+#         reboot_timeout: 600
+#       when: reboot_required.rc != 0
+
+#     - name: Health check simples
+#       ansible.builtin.uri:
+#         url: "http://localhost"
+#         status_code: 200
+#       ignore_errors: true

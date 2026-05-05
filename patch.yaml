@@ -48,8 +48,6 @@
         vm_name: "{{ item | regex_replace('^linuxvm-', '') }}"
 
 
----
-
 - name: Patch das VMs e coleta de dados
   hosts: all
   become: yes

@@ -41,8 +41,6 @@
       loop_control:
         label: "{{ item }}"
 
----
-
 # - name: Patch das VMs via SSH
 #   hosts: vm_patch
 #   become: yes

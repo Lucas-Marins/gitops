@@ -55,11 +55,6 @@
 
   tasks:
 
-    - name: Listar updates disponíveis (ANTES)
-      ansible.builtin.command: dnf check-update
-      register: updates_before
-      ignore_errors: true
-
     - name: Atualizar pacotes
       ansible.builtin.dnf:
         name: "*"

@@ -4,7 +4,7 @@
   sources:
     - ansible.eda.url_check:
         urls: 
-         - https://vm-linuxvm.apps.cluster-wm967.dynamic.redhatworkshops.io
+         - https://vm-linuxvm.apps.cluster-bgp69.dynamic.redhatworkshops.io
         delay: 5         
         
   rules:

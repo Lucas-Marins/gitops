@@ -5,9 +5,11 @@
   become: true
   force_handlers: true
   vars:
-    ansible_ssh_common_args: '-o PreferredAuthentications=password -o PubkeyAuthentication=no'
+    convert2rhel_repofile_url: "https://cdn.redhat.com/content/public/convert2rhel/9/convert2rhel.repo"
     rhsm_org: 14639027
     rhsm_activation_key: 58de7d4b-9d31-4ca4-9138-6d8b16e74db8
+    convert2rhel_reboot: true
+    convert2rhel_analyze: false
 
   tasks:
     - name: Perform OS conversion

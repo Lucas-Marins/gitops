@@ -5,8 +5,8 @@
   become: true
   force_handlers: true
   vars:
-    rhsm_org: MY_ORG
-    rhsm_activation_key: MY_ACTIVATION_KEY
+    rhsm_org: 14639027
+    rhsm_activation_key: 58de7d4b-9d31-4ca4-9138-6d8b16e74db8
 
   tasks:
     - name: Perform OS conversion

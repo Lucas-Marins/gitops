@@ -1,0 +1,7 @@
+---
+- name: Test handle_c2r_report
+  hosts: localhost
+  remote_user: root
+  roles:
+    - handle_c2r_report
+...

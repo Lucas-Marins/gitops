@@ -1,0 +1,60 @@
+---
+# tasks file for convert
+- name: Check distribution and install convert2rhel
+  ansible.builtin.import_role:
+    name: infra.convert2rhel.common
+
+- name: Convert2RHEL convert
+  ansible.builtin.shell: >
+    export PATH={{ convert_os_path }};
+    set -o pipefail;
+    convert2rhel convert -y
+    {{ convert_convert2rhel_opts }}
+    -c {{ convert2rhel_configfile.path }}
+    {{ convert_convert2rhel_enable_repos_args }}
+    {{ convert_convert2rhel_disable_repos_args }}
+    {% if convert_convert2rhel_eus %}
+    --eus
+    {% endif %}
+    {% if convert_no_rhsm %}
+    --no-rhsm
+    {% endif %}
+    2>&1
+  register: convert2rhel
+  args:
+    executable: /bin/bash
+  environment: "{{ convert_convert2rhel_env_vars }}"
+  async: "{{ convert_async_timeout_maximum | int }}"
+  poll: "{{ convert_async_poll_interval | int }}"
+  changed_when: convert2rhel.rc != 0
+  # When ihibitor is found the return code is 2. This will cause a fail and the report parsing will be skipped
+  # which is unsolicited. This is different from `convert2rhel analyze` where the exit code is 0 if inhibitor
+  # is found. This is a bug and is tracked under RHELC-1736
+  failed_when: convert2rhel.rc != 0 and convert2rhel.rc != 2
+  notify: Remove temporary configuration file
+
+- name: Set the activity for correct handling of the report
+  ansible.builtin.set_fact:
+    activity: "convert"
+
+- name: Include the handle_c2r_report role to check if conversion inhibited
+  ansible.builtin.include_role:
+    name: infra.convert2rhel.handle_c2r_report
+
+- name: Reboot if requested
+  ansible.builtin.reboot:
+    msg: "Host is starting Convert2RHEL!"
+    reboot_timeout: "{{ convert_reboot_timeout | int }}"
+  timeout: "{{ convert_reboot_timeout | int + 60 }}"
+  when: convert_reboot_requested
+
+- name: Remove Convert2RHEL
+  ansible.builtin.include_tasks: remove-c2r.yml
+
+- name: Notify display conversion status
+  ansible.builtin.assert:
+    that: true
+    quiet: true
+  changed_when: true
+  notify: Display conversion status
+...

@@ -1,0 +1,79 @@
+---
+# tasks file for common
+- name: Validate source distribution and major version
+  ansible.builtin.fail:
+    msg: "The system must be CentOS/Oracle/Alma/Rocky Linux 7 or 8"
+  when:
+    - ansible_distribution not in common_supported_distribution
+    - ansible_distribution_major_version in common_supported_major_version
+
+- name: Patch repositories if dealing with CentOS 7.
+  when: ansible_distribution == 'CentOS' and ansible_distribution_major_version | int == 7
+  block:
+    - name: Comment mirrorlist in all repos.
+      ansible.builtin.replace:
+        path: /etc/yum.repos.d/{{ item }}
+        regexp: ^mirrorlist
+        replace: "#mirrorlist"
+      loop: "{{ common_centos7_repos }}"
+
+    - name: Switch repo to vault.centos.org.
+      ansible.builtin.replace:
+        path: /etc/yum.repos.d/{{ item }}
+        regexp: "#baseurl=http://mirror.centos.org"
+        replace: baseurl=https://vault.centos.org
+      loop: "{{ common_centos7_repos }}"
+
+- name: Patch repositories if dealing with CentOS 8.
+  when: ansible_distribution == 'CentOS' and ansible_distribution_major_version | int == 8
+  block:
+    - name: Comment mirrorlist in all repos.
+      ansible.builtin.replace:
+        path: /etc/yum.repos.d/{{ item }}
+        regexp: ^mirrorlist
+        replace: "#mirrorlist"
+      loop: "{{ common_centos8_repos }}"
+
+    - name: Switch repo to vault.centos.org.
+      ansible.builtin.replace:
+        path: /etc/yum.repos.d/{{ item }}
+        regexp: "#baseurl=http://mirror.centos.org"
+        replace: baseurl=https://vault.centos.org
+      loop: "{{ common_centos8_repos }}"
+
+- name: Setup Convert2RHEL repository
+  when: not common_convert2rhel_repo_satellite
+  block:
+    - name: Download Red Hat GPG key
+      ansible.builtin.get_url:
+        url:  "{{ common_convert2rhel_repokey_url }}"
+        dest: "/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release"
+        mode: '0644'
+
+    - name: Determinate repofile for target
+      ansible.builtin.include_tasks: determinate-repofile.yml
+
+    - name: Add Convert2RHEL yum repository from Red Hat
+      ansible.builtin.get_url:
+        url: "{{ convert2rhel_repofile_url }}"
+        dest: "/etc/yum.repos.d/convert2rhel.repo"
+        mode: '0644'
+
+- name: Install Convert2RHEL
+  ansible.builtin.package:
+    name: convert2rhel
+    enablerepo: "{{ common_yum_enable_repos | default(omit) }}"
+
+- name: Create temporary configuration file
+  ansible.builtin.tempfile:
+    state: file
+    prefix: convert2rhel_configfile_
+  register: convert2rhel_configfile
+
+- name: Write config into configuration file
+  ansible.builtin.template:
+    src: configfile.j2
+    dest: "{{ convert2rhel_configfile.path }}"
+    mode: '0600'
+  when: not common_convert2rhel_repo_satellite
+...

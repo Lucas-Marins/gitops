@@ -5,6 +5,7 @@
   become: true
   force_handlers: true
   vars:
+    ansible_ssh_common_args: '-o PreferredAuthentications=password -o PubkeyAuthentication=no'
     rhsm_org: 14639027
     rhsm_activation_key: 58de7d4b-9d31-4ca4-9138-6d8b16e74db8
 

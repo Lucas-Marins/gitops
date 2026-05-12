@@ -1,5 +1,5 @@
 - name: Snapshot das VMs no OpenShift Virtualization
-  hosts: localhost
+  hosts: all
   gather_facts: no
 
   tasks:

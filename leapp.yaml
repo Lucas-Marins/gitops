@@ -1,0 +1,19 @@
+---
+- name: Upgrade
+  hosts: all
+  strategy: free
+  become: true
+  force_handlers: true
+  vars:
+    leapp_upgrade_type: cdn
+    leapp_pre_upgrade_update: true
+    leapp_post_upgrade_update: true
+  tasks:
+    - name: Install leapp upgrade package for 9→10
+      ansible.builtin.dnf:
+        name: leapp
+        state: present
+
+    - name: Perform OS upgrade
+      ansible.builtin.import_role:
+        name: infra.leapp.upgrade

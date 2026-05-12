@@ -1,7 +1,0 @@
----
-- name: Tests for common role
-  hosts: localhost
-  remote_user: root
-  roles:
-    - common
-...

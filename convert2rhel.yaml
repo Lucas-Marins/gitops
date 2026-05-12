@@ -11,7 +11,8 @@
     convert2rhel_reboot: true
     convert2rhel_analyze: false
     convert2rhel_sslverify: false
-
+    rhsm_username: ""
+    rhsm_password: ""
   tasks:
     - name: Perform OS conversion
       ansible.builtin.import_role:

@@ -5,11 +5,12 @@
   become: true
   force_handlers: true
   vars:
-    convert2rhel_repofile_url: "https://cdn.redhat.com/content/public/convert2rhel/9/convert2rhel.repo"
+    convert2rhel_repofile_url: "https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-9-x86_64.repo"
     rhsm_org: 14639027
     rhsm_activation_key: 58de7d4b-9d31-4ca4-9138-6d8b16e74db8
     convert2rhel_reboot: true
     convert2rhel_analyze: false
+    convert2rhel_sslverify: false
 
   tasks:
     - name: Perform OS conversion

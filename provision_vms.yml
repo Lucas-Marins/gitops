@@ -42,6 +42,10 @@
                         storage: 30Gi
             template:
               metadata:
+                annotations:
+                  vm.kubevirt.io/flavor: small
+                  vm.kubevirt.io/os: centos-stream9
+                  vm.kubevirt.io/workload: server
                 labels:
                   kubevirt.io/domain: "{{ item.role }}-{{ item.env }}-{{ '%02d' | format(item.id) }}"
                   kubevirt.io/size: small
@@ -65,7 +69,6 @@
                         masquerade: {}
                         model: virtio
                         name: default
-                    networkInterfaceMultiqueue: true
                     rng: {}
                   features:
                     acpi: {}

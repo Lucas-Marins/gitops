@@ -70,13 +70,6 @@
                         model: virtio
                         name: default
                     rng: {}
-                  features:
-                    acpi: {}
-                    smm:
-                      enabled: true
-                  firmware:
-                    bootloader:
-                      efi: {}
                   machine:
                     type: pc-q35-rhel9.4.0
                   memory:

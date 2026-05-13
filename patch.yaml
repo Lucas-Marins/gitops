@@ -49,7 +49,7 @@
 
 
 - name: Patch das VMs e coleta de dados
-  hosts: all
+  hosts: namespace_linuxvm
   become: yes
   gather_facts: yes
   ignore_errors: yes

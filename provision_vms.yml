@@ -20,10 +20,10 @@
             labels:
               app: "{{ item.role }}-{{ item.env }}-{{ '%02d' | format(item.id) }}"
               kubevirt.io/dynamic-credentials-support: 'true'
-              vm.kubevirt.io/template: rhel9-server-small
+              vm.kubevirt.io/template: centos-stream9-server-small
               vm.kubevirt.io/template.namespace: openshift
               vm.kubevirt.io/template.revision: '1'
-              vm.kubevirt.io/template.version: v0.26.0
+              vm.kubevirt.io/template.version: v0.31.1
           spec:
             running: true
             dataVolumeTemplates:
@@ -75,7 +75,7 @@
                     bootloader:
                       efi: {}
                   machine:
-                    type: pc-q35-rhel9.2.0
+                    type: pc-q35-rhel9.4.0
                   memory:
                     guest: 2Gi
                 networks:

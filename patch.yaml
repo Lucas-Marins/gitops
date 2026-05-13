@@ -1,7 +1,6 @@
 - name: Snapshot das VMs no OpenShift Virtualization
   hosts: localhost
   gather_facts: no
-  ignore_errors: yes
 
   tasks:
 
@@ -53,6 +52,7 @@
   hosts: all
   become: yes
   gather_facts: yes
+  ignore_errors: yes
 
   tasks:
 

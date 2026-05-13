@@ -34,7 +34,7 @@
                 spec:
                   sourceRef:
                     kind: DataSource
-                    name: rhel9
+                    name: centos-stream9
                     namespace: openshift-virtualization-os-images
                   storage:
                     resources:

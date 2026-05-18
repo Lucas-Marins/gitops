@@ -3,11 +3,8 @@
   hosts: localhost
   gather_facts: false
   vars:
-    llm_endpoint: "https://ollama-route-aiops-llm.apps.cluster-dtfl9.dynamic.redhatworkshops.io//v1/chat/completions"
+    llm_endpoint: "https://ollama-route-aiops-llm.apps.cluster-dtfl9.dynamic.redhatworkshops.io/v1/chat/completions"
     llm_model: "mistral:7b"
-    k8s_api: "https://kubernetes.default.svc.cluster.local:443"
-    k8s_token_path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
-    k8s_ca_path: "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
   tasks:
     # 1. Validar variaveis do evento
@@ -25,77 +22,42 @@
           Severidade: {{ event_severity }}
           Descricao: {{ event_description | default('N/A') }}
 
-    # 2. Ler token do service account do pod
-    - name: Ler token do service account
-      ansible.builtin.slurp:
-        src: "{{ k8s_token_path }}"
-      register: sa_token
-      no_log: true
-
-    - name: Set fact token
-      ansible.builtin.set_fact:
-        k8s_token: "{{ sa_token.content | b64decode }}"
-
-    # 3. Coletar logs do pod via API REST
-    - name: Coletar logs do pod via API Kubernetes
-      ansible.builtin.uri:
-        url: "{{ k8s_api }}/api/v1/namespaces/{{ event_namespace }}/pods/{{ event_pod }}/log?tailLines=50"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ k8s_token }}"
-        validate_certs: true
-        ca_path: "{{ k8s_ca_path }}"
-        status_code: 200
-      register: pod_logs_api
+    # 2. Coletar logs do pod via kubernetes.core (usa a credential do AAP)
+    - name: Coletar logs do pod
+      kubernetes.core.k8s_log:
+        name: "{{ event_pod }}"
+        namespace: "{{ event_namespace }}"
+        kind: Pod
+      register: pod_logs
       ignore_errors: true
       when: event_pod is defined and event_pod | length > 0
 
-    - name: Set fact logs
-      ansible.builtin.set_fact:
-        pod_logs: "{{ pod_logs_api.content | default('N/A') }}"
-
-    # 4. Coletar descricao/detalhes do pod via API REST
-    - name: Coletar detalhes do pod via API Kubernetes
-      ansible.builtin.uri:
-        url: "{{ k8s_api }}/api/v1/namespaces/{{ event_namespace }}/pods/{{ event_pod }}"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ k8s_token }}"
-        validate_certs: true
-        ca_path: "{{ k8s_ca_path }}"
-        status_code: 200
-      register: pod_details_api
+    # 3. Coletar detalhes do pod via k8s_info
+    - name: Coletar informacoes do pod
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        name: "{{ event_pod }}"
+        namespace: "{{ event_namespace }}"
+      register: pod_info
       ignore_errors: true
       when: event_pod is defined and event_pod | length > 0
 
-    - name: Extrair status do pod
+    - name: Extrair descricao do pod
       ansible.builtin.set_fact:
-        pod_describe: "{{ pod_details_api.json | to_nice_yaml | default('N/A') }}"
+        pod_describe: "{{ pod_info.resources[0] | to_nice_yaml | default('N/A') }}"
 
-    # 5. DESCOBRIR deployment pai via API (ownerReferences)
-    - name: Descobrir deployment do pod via API
-      ansible.builtin.uri:
-        url: "{{ k8s_api }}/api/v1/namespaces/{{ event_namespace }}/pods/{{ event_pod }}"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ k8s_token }}"
-        validate_certs: true
-        ca_path: "{{ k8s_ca_path }}"
-        status_code: 200
-      register: pod_json
-      ignore_errors: true
-      when: event_pod is defined and event_pod | length > 0
-
-    - name: Extrair nome do deployment pai
+    # 4. Descobrir deployment pai via ownerReferences
+    - name: Descobrir deployment pai
       ansible.builtin.set_fact:
-        parent_deployment: "{{ pod_json.json.metadata.ownerReferences | selectattr('kind', 'equalto', 'ReplicaSet') | map(attribute='name') | first | default('') | regex_replace('-[a-z0-9]+$', '') }}"
-      when: pod_json is succeeded and pod_json.json.metadata.ownerReferences is defined
+        parent_deployment: "{% if pod_info.resources | length > 0 %}{{ pod_info.resources[0].metadata.ownerReferences | selectattr('kind', 'equalto', 'ReplicaSet') | map(attribute='name') | first | default('') | regex_replace('-[a-z0-9]+$', '') }}{% else %}N/A{% endif %}"
+      when: pod_info is succeeded and pod_info.resources is defined
 
     - name: Mostrar deployment encontrado
       ansible.builtin.debug:
         msg: "Deployment pai: {{ parent_deployment | default('NAO ENCONTRADO') }}"
 
-    # 6. Montar prompt para o LLM
+    # 5. Montar prompt para o LLM
     - name: Montar prompt
       ansible.builtin.set_fact:
         llm_prompt: |
@@ -103,7 +65,7 @@
           Analise o incidente e responda EXATAMENTE neste formato:
 
           CAUSA_RAIZ: <uma linha>
-          ACAO_REMEDIACAO: <comando oc exato>
+          ACAO_REMEDIACAO: <comando oc ou kubectl exato>
           PLAYBOOK_SUGERIDO: <YAML ansible minimo>
 
           DADOS DO INCIDENTE:
@@ -115,12 +77,12 @@
           - Deployment: {{ parent_deployment | default('N/A') }}
 
           LOGS DO POD:
-          {{ pod_logs }}
+          {{ pod_logs.log | default('N/A') }}
 
-          DETALHES DO POD:
+          DETALHES DO POD (status, restarts, events):
           {{ pod_describe | truncate(2000) }}
 
-    # 7. Consultar LLM
+    # 6. Consultar LLM
     - name: Consultar IA para diagnostico
       ansible.builtin.uri:
         url: "{{ llm_endpoint }}"
@@ -151,7 +113,7 @@
           🤖 DIAGNOSTICO DA IA:
           {{ ai_diagnosis }}
 
-    # 8. Salvar auditoria
+    # 7. Salvar auditoria
     - name: Salvar relatorio
       ansible.builtin.copy:
         content: |
@@ -167,38 +129,33 @@
           {{ ai_diagnosis }}
         dest: "/tmp/aiops_{{ event_alert_name | replace(' ', '_') }}_{{ event_namespace }}.txt"
 
-    # 9. REMEDIACAO AUTOMATICA (critical) via API REST
+    # 8. REMEDIACAO AUTOMATICA (critical) via kubernetes.core
     - name: Executar remediacao automatica
       block:
-        - name: Rollout restart deployment via API
-          ansible.builtin.uri:
-            url: "{{ k8s_api }}/apis/apps/v1/namespaces/{{ event_namespace }}/deployments/{{ parent_deployment }}"
-            method: PATCH
-            headers:
-              Authorization: "Bearer {{ k8s_token }}"
-              Content-Type: "application/strategic-merge-patch+json"
-            validate_certs: true
-            ca_path: "{{ k8s_ca_path }}"
-            body_format: json
-            body:
+        - name: Rollout restart deployment via patch
+          kubernetes.core.k8s:
+            state: patched
+            api_version: apps/v1
+            kind: Deployment
+            name: "{{ parent_deployment }}"
+            namespace: "{{ event_namespace }}"
+            definition:
               spec:
                 template:
                   metadata:
                     annotations:
-                      kubectl.kubernetes.io/restartedAt: "{{ now(fmt='%Y-%m-%dT%H:%M:%SZ') }}"
-          when: parent_deployment | default('') | length > 0
+                      kubectl.kubernetes.io/restartedAt: "{{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -Iseconds')) }}"
+          when: parent_deployment | default('') | length > 0 and parent_deployment != 'N/A'
           ignore_errors: true
 
         - name: Ou deletar pod diretamente (fallback)
-          ansible.builtin.uri:
-            url: "{{ k8s_api }}/api/v1/namespaces/{{ event_namespace }}/pods/{{ event_pod }}"
-            method: DELETE
-            headers:
-              Authorization: "Bearer {{ k8s_token }}"
-            validate_certs: true
-            ca_path: "{{ k8s_ca_path }}"
-            status_code: [200, 202, 404]
-          when: parent_deployment | default('') | length == 0
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Pod
+            name: "{{ event_pod }}"
+            namespace: "{{ event_namespace }}"
+          when: parent_deployment | default('') | length == 0 or parent_deployment == 'N/A'
 
         - name: Notificar sucesso
           ansible.builtin.debug:

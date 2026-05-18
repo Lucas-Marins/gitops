@@ -1,0 +1,21 @@
+---
+- name: AIOps Webhook Handler
+  hosts: localhost
+  sources:
+    - ansible.eda.webhook:
+        host: 0.0.0.0
+        port: 5000
+
+  rules:
+    - name: Incidente reportado - acionar diagnostico com IA
+      condition: event.payload.action == "incident"
+      action:
+        run_job_template:
+          name: "AIOps AI Diagnose"
+          organization: Default
+          extra_vars:
+            event_alert_name: "{{ event.payload.alert_name | default('Unknown') }}"
+            event_namespace: "{{ event.payload.namespace | default('default') }}"
+            event_pod: "{{ event.payload.pod | default('') }}"
+            event_severity: "{{ event.payload.severity | default('warning') }}"
+            event_description: "{{ event.payload.description | default('') }}"

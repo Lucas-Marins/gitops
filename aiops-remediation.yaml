@@ -1,0 +1,143 @@
+---
+- name: AIOps - Diagnostico e Remediacao com LLM
+  hosts: localhost
+  gather_facts: false
+  vars:
+    llm_endpoint: "http://ollama-service.aiops-llm.svc.cluster.local:11434/v1/chat/completions"
+    llm_model: "mistral:7b"
+
+  tasks:
+    # 1. Validar variaveis do evento
+    - name: Validar variaveis
+      ansible.builtin.fail:
+        msg: "event_alert_name ou event_namespace nao definidos"
+      when: event_alert_name is not defined or event_namespace is not defined
+
+    - name: Mostrar incidente
+      ansible.builtin.debug:
+        msg: |
+          🚨 INCIDENTE: {{ event_alert_name }}
+          Namespace: {{ event_namespace }}
+          Pod: {{ event_pod | default('N/A') }}
+          Severidade: {{ event_severity }}
+          Descricao: {{ event_description | default('N/A') }}
+
+    # 2. Coletar dados do OpenShift
+    - name: Coletar logs do pod
+      ansible.builtin.command: >
+        oc logs {{ event_pod }} -n {{ event_namespace }} --tail=50
+      register: pod_logs
+      ignore_errors: true
+      when: event_pod is defined and event_pod | length > 0
+
+    - name: Coletar descricao do pod
+      ansible.builtin.command: >
+        oc describe pod {{ event_pod }} -n {{ event_namespace }}
+      register: pod_describe
+      ignore_errors: true
+      when: event_pod is defined and event_pod | length > 0
+
+    # 3. DESCOBRIR deployment pai do pod (via ownerReference)
+    - name: Descobrir deployment do pod
+      ansible.builtin.shell: |
+        oc get pod {{ event_pod }} -n {{ event_namespace }} -o json | \
+        jq -r '.metadata.ownerReferences[] | select(.kind=="ReplicaSet") | .name' | \
+        xargs -I {} oc get rs {} -n {{ event_namespace }} -o json | \
+        jq -r '.metadata.ownerReferences[] | select(.kind=="Deployment") | .name'
+      register: parent_deployment
+      ignore_errors: true
+      when: event_pod is defined and event_pod | length > 0
+
+    - name: Mostrar deployment encontrado
+      ansible.builtin.debug:
+        msg: "Deployment pai: {{ parent_deployment.stdout | default('NAO ENCONTRADO') }}"
+      when: parent_deployment is defined
+
+    # 4. Montar prompt para IA
+    - name: Montar prompt
+      ansible.builtin.set_fact:
+        llm_prompt: |
+          Voce e um SRE especialista em OpenShift.
+          Analise o incidente e responda EXATAMENTE neste formato:
+
+          CAUSA_RAIZ: <uma linha>
+          ACAO_REMEDIACAO: <comando oc exato>
+          PLAYBOOK_SUGERIDO: <YAML ansible minimo>
+
+          DADOS:
+          - Alerta: {{ event_alert_name }}
+          - Namespace: {{ event_namespace }}
+          - Pod: {{ event_pod | default('N/A') }}
+          - Severidade: {{ event_severity }}
+          - Descricao: {{ event_description | default('N/A') }}
+
+          LOGS:
+          {{ pod_logs.stdout | default('N/A') }}
+
+          DESCRICAO DO POD:
+          {{ pod_describe.stdout | default('N/A') }}
+
+    # 5. Consultar LLM
+    - name: Consultar IA
+      ansible.builtin.uri:
+        url: "{{ llm_endpoint }}"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          model: "{{ llm_model }}"
+          messages:
+            - role: system
+              content: "Voce e um engenheiro SRE. Responda apenas no formato solicitado."
+            - role: user
+              content: "{{ llm_prompt }}"
+          temperature: 0.1
+          max_tokens: 2000
+        status_code: 200
+        timeout: 180
+      register: llm_response
+
+    - name: Extrair diagnostico
+      ansible.builtin.set_fact:
+        ai_diagnosis: "{{ llm_response.json.choices[0].message.content }}"
+
+    - name: Mostrar resultado
+      ansible.builtin.debug:
+        msg: |
+          🤖 DIAGNOSTICO DA IA:
+          {{ ai_diagnosis }}
+
+    # 6. Salvar auditoria
+    - name: Salvar relatorio
+      ansible.builtin.copy:
+        content: |
+          === AIOps Report ===
+          Data: {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -Iseconds')) }}
+          Alerta: {{ event_alert_name }}
+          Namespace: {{ event_namespace }}
+          Pod: {{ event_pod | default('N/A') }}
+          Severidade: {{ event_severity }}
+          Deployment: {{ parent_deployment.stdout | default('N/A') }}
+
+          === Diagnostico IA ===
+          {{ ai_diagnosis }}
+        dest: "/tmp/aiops_{{ event_alert_name | replace(' ', '_') }}_{{ event_namespace }}.txt"
+
+    # 7. REMEDIACAO AUTOMATICA (critical)
+    - name: Executar remediacao automatica
+      block:
+        - name: Rollout restart no deployment pai
+          ansible.builtin.command: >
+            oc rollout restart deployment/{{ parent_deployment.stdout }} -n {{ event_namespace }}
+          when: parent_deployment.stdout is defined and parent_deployment.stdout | length > 0
+
+        - name: Ou restart direto no pod (fallback)
+          ansible.builtin.command: >
+            oc delete pod {{ event_pod }} -n {{ event_namespace }}
+          when: parent_deployment.stdout is not defined or parent_deployment.stdout | length == 0
+
+        - name: Notificar sucesso
+          ansible.builtin.debug:
+            msg: "✅ Remediacao executada para {{ event_alert_name }}"
+      when: event_severity == "critical"

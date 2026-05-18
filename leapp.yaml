@@ -18,6 +18,10 @@
       ansible.builtin.import_role:
         name: infra.leapp.analysis
 
+    - name: Perform remediations on the system
+      ansible.builtin.import_role:
+        name: infra.leapp.remediate
+
     - name: Perform OS upgrade
       ansible.builtin.import_role:
         name: infra.leapp.upgrade

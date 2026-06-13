@@ -16,7 +16,7 @@
     - name: Mostrar incidente
       ansible.builtin.debug:
         msg: |
-          🚨 INCIDENTE: {{ event_alert_name }}
+          INCIDENTE: {{ event_alert_name }}
           Namespace: {{ event_namespace }}
           Pod: {{ event_pod | default('N/A') }}
           Severidade: {{ event_severity }}

@@ -3,7 +3,7 @@
   hosts: localhost
   gather_facts: false
   vars:
-    llm_endpoint: "https://ollama-route-aiops-llm.apps.cluster-dtfl9.dynamic.redhatworkshops.io/v1/chat/completions"
+    llm_endpoint: "https://ollama-route-aiops-llm.apps.cluster-wnx6z.dynamic.redhatworkshops.io/v1/chat/completions"
     llm_model: "mistral:7b"
 
   tasks:

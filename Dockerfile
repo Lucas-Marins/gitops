@@ -1,4 +1,8 @@
-FROM registry.access.redhat.com/ubi9/openjdk-17:latest AS builder
+## Imagem que sem problemas
+FROM registry.access.redhat.com/ubi9/openjdk-17-runtime:1.24 AS builder
+
+## Imagem com problema
+##FROM registry.access.redhat.com/ubi9/openjdk-17:latest AS builder
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src

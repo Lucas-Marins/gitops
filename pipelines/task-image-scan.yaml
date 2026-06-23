@@ -1,0 +1,57 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: rhacs-image-scan
+spec:
+  description: |-
+    This task runs the "roxctl image scan" command to perform a vulnerability
+    scan of a container image with RHACS. Outputs a table to the log.
+    This task does NOT fail on policy violations — it is for reporting only.
+  params:
+    - name: rox_central_endpoint
+      type: string
+    - name: rox_api_token
+      type: string
+    - name: image
+      type: string
+    - name: image_digest
+      type: string
+  steps:
+    - computeResources: {}
+      env:
+        - name: ROX_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: rox_api_token
+              name: $(params.rox_api_token)
+        - name: ROX_CENTRAL_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              key: rox_central_endpoint
+              name: $(params.rox_central_endpoint)
+        - name: GRPC_ENFORCE_ALPN_ENABLED
+          value: 'false'
+      image: 'registry.access.redhat.com/ubi9/ubi:latest'
+      name: rhacs-image-scan
+      script: |
+        #!/usr/bin/env bash
+        set -e
+
+        echo "## Downloading roxctl"
+        curl -k -L -H "Authorization: Bearer $ROX_API_TOKEN" \
+          "https://${ROX_CENTRAL_ENDPOINT}/api/cli/download/roxctl-linux" \
+          --output ./roxctl > /dev/null
+        chmod +x ./roxctl
+
+        FULL_IMAGE="$(params.image)@$(params.image_digest)"
+        echo "## Scanning image: ${FULL_IMAGE}"
+
+        # Scan em formato tabela — sempre retorna 0, só loga vulnerabilidades
+        ./roxctl --insecure-skip-tls-verify \
+          image scan \
+          --endpoint "${ROX_CENTRAL_ENDPOINT}" \
+          --image "${FULL_IMAGE}" \
+          -o table
+  workspaces:
+    - description: Workspace for compatibility (not actively used)
+      name: scan-output

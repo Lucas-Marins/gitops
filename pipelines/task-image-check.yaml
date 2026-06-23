@@ -1,0 +1,64 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: rhacs-image-check
+spec:
+  description: |-
+    This task runs the "roxctl image check" command to verify a container image
+    with RHACS. The security policy violations are reported in the task output.
+    If there is a violation of an enforced policy, then the task fails.
+  params:
+    - name: rox_central_endpoint
+      type: string
+    - name: rox_api_token
+      type: string
+    - name: image
+      type: string
+    - name: image_digest
+      type: string
+  steps:
+    - computeResources: {}
+      env:
+        - name: ROX_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: rox_api_token
+              name: $(params.rox_api_token)
+        - name: ROX_CENTRAL_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              key: rox_central_endpoint
+              name: $(params.rox_central_endpoint)
+        - name: GRPC_ENFORCE_ALPN_ENABLED
+          value: 'false'
+      image: 'registry.access.redhat.com/ubi9/ubi:latest'
+      name: rhacs-image-check
+      script: |
+        #!/usr/bin/env bash
+
+        echo "## Downloading roxctl from RHACS Central"
+        curl -k -L -H "Authorization: Bearer $ROX_API_TOKEN" \
+          "https://${ROX_CENTRAL_ENDPOINT}/api/cli/download/roxctl-linux" \
+          --output ./roxctl > /dev/null
+
+        echo "## Making roxctl executable"
+        chmod +x ./roxctl > /dev/null
+
+        FULL_IMAGE="$(params.image)@$(params.image_digest)"
+        echo "## Scanning image: ${FULL_IMAGE}"
+
+        # Roda o check sem set -e, captura exit code
+        ./roxctl --insecure-skip-tls-verify \
+          image check \
+          --endpoint "${ROX_CENTRAL_ENDPOINT}" \
+          --image "${FULL_IMAGE}"
+        EXIT_CODE=$?
+
+        echo ""
+        echo "============================================================"
+        echo "  RHACS VULNERABILITY DASHBOARD"
+        echo "  https://${ROX_CENTRAL_ENDPOINT}/main/vulnerability-management/images/$(params.image_digest)"
+        echo "============================================================"
+
+        # Sai com o código original do roxctl
+        exit $EXIT_CODE

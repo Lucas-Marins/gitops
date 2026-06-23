@@ -1,0 +1,104 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: pipeline-java
+spec:
+  params:
+    - default: 'https://github.com/Lucas-Marins/gitops.git'
+      name: git-url
+      type: string
+    - default: maven
+      name: git-revision
+      type: string
+    - default: quay-n7fml.apps.cluster-n7fml.n7fml.sandbox639.opentlc.com/quayadmin/repo-workshop
+      name: quay-image
+      type: string
+    - default: rox-central-endpoint
+      name: rox-central-endpoint
+      type: string
+    - default: rox-api-token
+      name: rox-api-token
+      type: string
+  tasks:
+    - name: git-clone
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+      taskRef:
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+        resolver: cluster
+      workspaces:
+        - name: output
+          workspace: workshop
+    - name: read-version
+      runAfter:
+        - git-clone
+      taskRef:
+        kind: Task
+        name: read-version
+      workspaces:
+        - name: source
+          workspace: workshop
+    - name: buildah
+      params:
+        - name: IMAGE
+          value: '$(params.quay-image):$(tasks.read-version.results.version)'
+        - name: DOCKERFILE
+          value: ./Dockerfile
+      runAfter:
+        - read-version
+      taskRef:
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+        resolver: cluster
+      workspaces:
+        - name: source
+          workspace: workshop
+    - name: rhacs-image-check
+      params:
+        - name: rox_central_endpoint
+          value: $(params.rox-central-endpoint)
+        - name: rox_api_token
+          value: $(params.rox-api-token)
+        - name: image
+          value: $(params.quay-image)
+        - name: image_digest
+          value: $(tasks.buildah.results.IMAGE_DIGEST)
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: rhacs-image-check
+    - name: update-git-file
+      params:
+        - name: GIT_REPO_URL
+          value: 'https://github.com/Lucas-Marins/gitops.git'
+        - name: GIT_REVISION
+          value: maven
+        - name: FILE_PATH
+          value: kustomize/overlays/kustomization.yaml
+        - name: NEW_VALUE
+          value: $(tasks.read-version.results.version)
+      runAfter:
+        - rhacs-image-check
+      taskRef:
+        kind: Task
+        name: update-git-file
+      workspaces:
+        - name: shared-data
+          workspace: workshop
+  workspaces:
+    - name: workshop

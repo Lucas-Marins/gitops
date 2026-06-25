@@ -2,6 +2,7 @@ apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: pipeline-java
+  namespace: pipeline-workshop
 spec:
   params:
     - default: 'https://github.com/Lucas-Marins/gitops.git'
@@ -82,6 +83,24 @@ spec:
       taskRef:
         kind: Task
         name: rhacs-image-check
+    - name: rhacs-image-scan
+      params:
+        - name: rox_central_endpoint
+          value: $(params.rox-central-endpoint)
+        - name: rox_api_token
+          value: $(params.rox-api-token)
+        - name: image
+          value: $(params.quay-image)
+        - name: image_digest
+          value: $(tasks.buildah.results.IMAGE_DIGEST)
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: rhacs-image-scan
+      workspaces:
+        - name: scan-output
+          workspace: workshop
     - name: update-git-file
       params:
         - name: GIT_REPO_URL
@@ -94,6 +113,7 @@ spec:
           value: $(tasks.read-version.results.version)
       runAfter:
         - rhacs-image-check
+        - rhacs-image-scan
       taskRef:
         kind: Task
         name: update-git-file

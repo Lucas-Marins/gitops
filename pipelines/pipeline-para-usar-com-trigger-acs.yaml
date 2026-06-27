@@ -5,19 +5,28 @@ metadata:
 spec:
   params:
     - default: 'https://github.com/Lucas-Marins/gitops.git'
+      description: The application Git repository
       name: git-url
       type: string
     - default: maven
+      description: The application Git revision
       name: git-revision
       type: string
     - default: quay-n7fml.apps.cluster-n7fml.n7fml.sandbox639.opentlc.com/quayadmin/repo-workshop
+      description: The container image name, without the tag
       name: quay-image
       type: string
     - default: rox-central-endpoint
+      description: Secret containing the RHACS Central endpoint
       name: rox-central-endpoint
       type: string
     - default: rox-api-token
+      description: Secret containing the RHACS API token
       name: rox-api-token
+      type: string
+    - default: kustomize/base/deployment.yaml
+      description: The OpenShift resource file to verify with RHACS
+      name: deployment-file
       type: string
   tasks:
     - name: git-clone
@@ -38,6 +47,7 @@ spec:
       workspaces:
         - name: output
           workspace: workshop
+
     - name: read-version
       runAfter:
         - git-clone
@@ -47,6 +57,7 @@ spec:
       workspaces:
         - name: source
           workspace: workshop
+
     - name: buildah
       params:
         - name: IMAGE
@@ -67,6 +78,26 @@ spec:
       workspaces:
         - name: source
           workspace: workshop
+
+    - name: rhacs-image-scan
+      params:
+        - name: rox_central_endpoint
+          value: $(params.rox-central-endpoint)
+        - name: rox_api_token
+          value: $(params.rox-api-token)
+        - name: image
+          value: $(params.quay-image)
+        - name: image_digest
+          value: $(tasks.buildah.results.IMAGE_DIGEST)
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: rhacs-image-scan
+      workspaces:
+        - name: scan-output
+          workspace: workshop
+
     - name: rhacs-image-check
       params:
         - name: rox_central_endpoint
@@ -82,6 +113,24 @@ spec:
       taskRef:
         kind: Task
         name: rhacs-image-check
+
+    - name: rhacs-deployment-check
+      params:
+        - name: rox_central_endpoint
+          value: $(params.rox-central-endpoint)
+        - name: rox_api_token
+          value: $(params.rox-api-token)
+        - name: file
+          value: $(params.deployment-file)
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: rhacs-deployment-check
+      workspaces:
+        - name: workspace
+          workspace: workshop
+
     - name: update-git-file
       params:
         - name: GIT_REPO_URL
@@ -93,12 +142,15 @@ spec:
         - name: NEW_VALUE
           value: $(tasks.read-version.results.version)
       runAfter:
+        - rhacs-image-scan
         - rhacs-image-check
+        - rhacs-deployment-check
       taskRef:
         kind: Task
         name: update-git-file
       workspaces:
         - name: shared-data
           workspace: workshop
+
   workspaces:
     - name: workshop

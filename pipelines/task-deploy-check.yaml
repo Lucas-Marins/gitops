@@ -1,0 +1,48 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: rhacs-deployment-check
+spec:
+  description: |-
+    This task runs the "roxctl deployment check" command to verify an
+    OpenShift resource file in YAML format with RHACS.
+  params:
+    - name: rox_central_endpoint
+      type: string
+    - name: rox_api_token
+      type: string
+    - name: file
+      type: string
+  steps:
+    - computeResources: {}
+      env:
+        - name: ROX_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: rox_api_token
+              name: $(params.rox_api_token)
+        - name: ROX_CENTRAL_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              key: rox_central_endpoint
+              name: $(params.rox_central_endpoint)
+      image: 'registry.access.redhat.com/ubi9/ubi:latest'
+      name: rhacs-deployment-check
+      script: |
+        #!/usr/bin/env bash
+        set -e
+
+        echo "## Downloading roxctl"
+        curl -k -L -H "Authorization: Bearer $ROX_API_TOKEN" \
+          "https://${ROX_CENTRAL_ENDPOINT}/api/cli/download/roxctl-linux" \
+          --output ./roxctl > /dev/null
+        chmod +x ./roxctl
+
+        echo "## Verifying deployment file: $(params.file)"
+        ./roxctl --insecure-skip-tls-verify \
+          deployment check \
+          --endpoint "${ROX_CENTRAL_ENDPOINT}" \
+          -f "$(params.file)"
+  workspaces:
+    - description: The workspace consisting of the application Git repository.
+      name: workspace

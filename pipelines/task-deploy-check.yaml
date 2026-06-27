@@ -26,17 +26,20 @@ spec:
             secretKeyRef:
               key: rox_central_endpoint
               name: $(params.rox_central_endpoint)
+        - name: GRPC_ENFORCE_ALPN_ENABLED
+          value: 'false'
       image: 'registry.access.redhat.com/ubi9/ubi:latest'
       name: rhacs-deployment-check
       script: |
         #!/usr/bin/env bash
-        set -e
 
-        echo "## Downloading roxctl"
+        echo "## Downloading roxctl from RHACS Central"
         curl -k -L -H "Authorization: Bearer $ROX_API_TOKEN" \
           "https://${ROX_CENTRAL_ENDPOINT}/api/cli/download/roxctl-linux" \
           --output ./roxctl > /dev/null
-        chmod +x ./roxctl
+
+        echo "## Making roxctl executable"
+        chmod +x ./roxctl > /dev/null
 
         echo "## Verifying deployment file: $(params.file)"
         ./roxctl --insecure-skip-tls-verify \

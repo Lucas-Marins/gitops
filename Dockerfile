@@ -8,4 +8,5 @@ FROM registry.access.redhat.com/ubi9/openjdk-17-runtime:latest
 WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java","-jar","app.jar"]
+CMD ["java", "--add-opens=java.base/java.io=ALL-UNNAMED", "-jar", "/app/app.jar"]
+

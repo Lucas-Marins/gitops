@@ -114,6 +114,24 @@ spec:
       taskRef:
         kind: Task
         name: rhacs-image-check
+
+    - name: rhacs-deployment-check
+      params:
+        - name: rox_central_endpoint
+          value: $(params.rox-central-endpoint)
+        - name: rox_api_token
+          value: $(params.rox-api-token)
+        - name: image
+          value: $(params.quay-image)
+        - name: file
+          value: $(params.deployment-file)
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: rhacs-deployment-check
+
+
     - name: update-git-file
       params:
         - name: GIT_REPO_URL
@@ -127,6 +145,7 @@ spec:
       runAfter:
         - rhacs-image-scan
         - rhacs-image-check
+        - rhacs-deployment-check
       taskRef:
         kind: Task
         name: update-git-file

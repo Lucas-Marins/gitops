@@ -40,12 +40,13 @@ spec:
 
         echo "## Making roxctl executable"
         chmod +x ./roxctl > /dev/null
-
-        echo "## Verifying deployment file: $(params.file)"
+        DEPLOYMENT_FILE="$(workspaces.workspace.path)/$(params.file)"
+        
+        echo "## Scanning deployment file: ${DEPLOYMENT_FILE}"
         ./roxctl --insecure-skip-tls-verify \
           deployment check \
           --endpoint "${ROX_CENTRAL_ENDPOINT}" \
-          -f "$(params.file)"
+          -f "$DEPLOYMENT_FILE"
   workspaces:
     - description: The workspace consisting of the application Git repository.
       name: workspace

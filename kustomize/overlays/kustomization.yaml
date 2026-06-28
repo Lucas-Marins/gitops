@@ -8,4 +8,4 @@ images:
   - name: hello-java
     #newName: docker.io/123l/hello-world-https
     newName: quay-tjzlj.apps.cluster-tjzlj.tjzlj.sandbox5438.opentlc.com/quayadmin/repo-workshop
-    newTag: 1.0.1
+    newTag: 1.0.2

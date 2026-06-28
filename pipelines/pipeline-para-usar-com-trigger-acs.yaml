@@ -130,6 +130,9 @@ spec:
       taskRef:
         kind: Task
         name: rhacs-deployment-check
+      workspaces:                       
+        - name: workspace
+          workspace: workshop
 
 
     - name: update-git-file

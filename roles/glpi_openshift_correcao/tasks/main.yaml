@@ -1,5 +1,6 @@
 ---
-# Busca Group_Ticket diretamente (eficiente, não depende do total de tickets)
+# Entrypoint da role glpi_openshift_correcao
+# Busca Group_Ticket e extrai ID do ticket do link href
 
 - name: GLPI | Iniciar sessao
   ansible.builtin.uri:
@@ -15,8 +16,8 @@
   ansible.builtin.set_fact:
     glpi_session_token: "{{ glpi_session.json.session_token }}"
 
-# Buscar Group_Ticket diretamente — retorna apenas relacionamentos do grupo ansible
-- name: GLPI | Buscar Group_Ticket do grupo ansible
+# Buscar Group_Ticket diretamente — retorna apenas relacionamentos do grupo
+- name: GLPI | Buscar Group_Ticket do grupo {{ glpi_group_name }}
   ansible.builtin.uri:
     url: "{{ glpi_url }}/apirest.php/Group_Ticket?expand_dropdowns=true&range=0-999"
     method: GET
@@ -26,15 +27,20 @@
     status_code: 200
   register: _group_tickets
 
-- name: GLPI | Filtrar tickets do grupo ansible
+# Extrair IDs dos tickets dos links href
+# O link href contém: "http://.../api/Ticket/3" — extraímos o ID do final
+- name: GLPI | Extrair IDs dos tickets do grupo {{ glpi_group_name }}
   ansible.builtin.set_fact:
-    _ticket_ids: "{{ _group_tickets.json | selectattr('groups_id', 'equalto', 'ansible') | map(attribute='tickets_id') | list }}"
+    _ticket_ids: "{{ _ticket_ids | default([]) + [item.links | selectattr('rel', 'equalto', 'Ticket') | map(attribute='href') | first | regex_replace('^.*/', '') | int] }}"
+  loop: "{{ _group_tickets.json | selectattr('groups_id', 'equalto', glpi_group_name) | list }}"
+  loop_control:
+    label: "Group_Ticket ID {{ item.id }}"
 
-- name: GLPI | Debug
+- name: GLPI | Debug — IDs extraídos
   ansible.builtin.debug:
-    msg: "Tickets do grupo ansible: {{ _ticket_ids | length }} | IDs: {{ _ticket_ids }}"
+    msg: "Tickets do grupo {{ glpi_group_name }}: {{ _ticket_ids | length }} | IDs: {{ _ticket_ids }}"
 
-# Buscar detalhes de cada ticket
+# Buscar detalhes de cada ticket pelo ID
 - name: GLPI | Buscar detalhes dos tickets
   ansible.builtin.uri:
     url: "{{ glpi_url }}/apirest.php/Ticket/{{ item }}?expand_dropdowns=true"
@@ -46,7 +52,7 @@
   register: _ticket_details
   loop: "{{ _ticket_ids }}"
   loop_control:
-    label: "Ticket {{ item }}"
+    label: "Ticket ID {{ item }}"
 
 # Normalizar para o formato esperado pelo processar_ticket.yml
 - name: GLPI | Normalizar tickets

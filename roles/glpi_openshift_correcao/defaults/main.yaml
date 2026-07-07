@@ -16,3 +16,7 @@ snapshot_prefix: "glpi"
 vm_become: yes
 vm_become_user: root
 vm_ssh_timeout: 600
+
+glpi_group_name: "ansible"
+
+glpi_page_size: 100

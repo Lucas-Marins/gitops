@@ -188,19 +188,19 @@
   ansible.builtin.debug:
     msg: "Total para processar: {{ glpi_tickets | length }} | IDs: {{ glpi_tickets | map(attribute='id') | list }}"
 
-# - name: GLPI | Processar tickets
-#   ansible.builtin.include_tasks: processar_ticket.yml
-#   loop: "{{ glpi_tickets }}"
-#   loop_control:
-#     loop_var: ticket
-#   when: glpi_tickets | length > 0
+- name: GLPI | Processar tickets
+  ansible.builtin.include_tasks: processar_ticket.yml
+  loop: "{{ glpi_tickets }}"
+  loop_control:
+    loop_var: ticket
+  when: glpi_tickets | length > 0
 
-# - name: GLPI | Encerrar sessao
-#   ansible.builtin.uri:
-#     url: "{{ glpi_url }}/apirest.php/killSession"
-#     method: GET
-#     headers:
-#       Session-Token: "{{ glpi_session_token }}"
-#     validate_certs: false
-#     status_code: 200
-#   ignore_errors: true
+- name: GLPI | Encerrar sessao
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/killSession"
+    method: GET
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+    validate_certs: false
+    status_code: 200
+  ignore_errors: true

@@ -18,7 +18,9 @@
 
 - name: GLPI | Buscar tickets de vulnerabilidades
   ansible.builtin.uri:
-    url: "{{ glpi_url }}/apirest.php/Ticket?searchText[0]={{ glpi_search_filter | urlencode }}&criteria[0][field]=1&criteria[0][searchtype]=contains&criteria[0][value]={{ glpi_search_filter | urlencode }}&is_deleted=0"
+    url: >-
+      {{ glpi_url }}/apirest.php/search/Ticket?criteria[0][field]=1&criteria[0][searchtype]=contains&criteria[0][value]={{
+      glpi_search_filter | urlencode }}&is_deleted=0
     method: GET
     headers:
       Session-Token: "{{ glpi_session_token }}"

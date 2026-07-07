@@ -2,6 +2,95 @@
 # Entrypoint da role glpi_openshift_correcao
 # Busca Group_Ticket e extrai ID do ticket do link href
 
+# - name: GLPI | Iniciar sessao
+#   ansible.builtin.uri:
+#     url: "{{ glpi_url }}/apirest.php/initSession"
+#     method: GET
+#     headers:
+#       Authorization: "Basic {{ (glpi_user + ':' + glpi_pass) | b64encode }}"
+#     validate_certs: false
+#     status_code: 200
+#   register: glpi_session
+
+# - name: GLPI | Guardar token
+#   ansible.builtin.set_fact:
+#     glpi_session_token: "{{ glpi_session.json.session_token }}"
+
+# # Buscar Group_Ticket diretamente — retorna apenas relacionamentos do grupo
+# - name: GLPI | Buscar Group_Ticket do grupo {{ glpi_group_name }}
+#   ansible.builtin.uri:
+#     url: "{{ glpi_url }}/apirest.php/Group_Ticket?expand_dropdowns=true&range=0-999"
+#     method: GET
+#     headers:
+#       Session-Token: "{{ glpi_session_token }}"
+#     validate_certs: false
+#     status_code: 200
+#   register: _group_tickets
+
+# # Extrair IDs dos tickets dos links href
+# # O link href contém: "http://.../api/Ticket/3" — extraímos o ID do final
+# - name: GLPI | Extrair IDs dos tickets do grupo {{ glpi_group_name }}
+#   ansible.builtin.set_fact:
+#     _ticket_ids: "{{ _ticket_ids | default([]) + [item.links | selectattr('rel', 'equalto', 'Ticket') | map(attribute='href') | first | regex_replace('^.*/', '') | int] }}"
+#   loop: "{{ _group_tickets.json | selectattr('groups_id', 'equalto', glpi_group_name) | list }}"
+#   loop_control:
+#     label: "Group_Ticket ID {{ item.id }}"
+
+# - name: GLPI | Debug — IDs extraídos
+#   ansible.builtin.debug:
+#     msg: "Tickets do grupo {{ glpi_group_name }}: {{ _ticket_ids | length }} | IDs: {{ _ticket_ids }}"
+
+# # Buscar detalhes de cada ticket pelo ID
+# - name: GLPI | Buscar detalhes dos tickets
+#   ansible.builtin.uri:
+#     url: "{{ glpi_url }}/apirest.php/Ticket/{{ item }}?expand_dropdowns=true"
+#     method: GET
+#     headers:
+#       Session-Token: "{{ glpi_session_token }}"
+#     validate_certs: false
+#     status_code: 200
+#   register: _ticket_details
+#   loop: "{{ _ticket_ids }}"
+#   loop_control:
+#     label: "Ticket ID {{ item }}"
+
+# # Normalizar para o formato esperado pelo processar_ticket.yml
+# - name: GLPI | Normalizar tickets
+#   ansible.builtin.set_fact:
+#     _ticket_item:
+#       id: "{{ item.json.id }}"
+#       name: "{{ item.json.name }}"
+#   loop: "{{ _ticket_details.results }}"
+#   register: _ticket_items
+
+# - name: GLPI | Consolidar
+#   ansible.builtin.set_fact:
+#     glpi_tickets: "{{ _ticket_items.results | map(attribute='ansible_facts._ticket_item') | list }}"
+
+# - name: GLPI | Debug final
+#   ansible.builtin.debug:
+#     msg: "Total para processar: {{ glpi_tickets | length }} | IDs: {{ glpi_tickets | map(attribute='id') | list }}"
+
+# - name: GLPI | Processar tickets
+#   ansible.builtin.include_tasks: processar_ticket.yml
+#   loop: "{{ glpi_tickets }}"
+#   loop_control:
+#     loop_var: ticket
+#   when: glpi_tickets | length > 0
+
+# - name: GLPI | Encerrar sessao
+#   ansible.builtin.uri:
+#     url: "{{ glpi_url }}/apirest.php/killSession"
+#     method: GET
+#     headers:
+#       Session-Token: "{{ glpi_session_token }}"
+#     validate_certs: false
+#     status_code: 200
+#   ignore_errors: true
+
+---
+# Entrypoint otimizado: busca direta pelo grupo, sem varrer o sistema inteiro
+
 - name: GLPI | Iniciar sessao
   ansible.builtin.uri:
     url: "{{ glpi_url }}/apirest.php/initSession"
@@ -16,31 +105,61 @@
   ansible.builtin.set_fact:
     glpi_session_token: "{{ glpi_session.json.session_token }}"
 
-# Buscar Group_Ticket diretamente — retorna apenas relacionamentos do grupo
-- name: GLPI | Buscar Group_Ticket do grupo {{ glpi_group_name }}
+# ═══════════════════════════════════════════════════════════
+# 1. RESOLVER NOME DO GRUPO → ID (search API, exata)
+# ═══════════════════════════════════════════════════════════
+- name: GLPI | Buscar ID do grupo pelo nome
   ansible.builtin.uri:
-    url: "{{ glpi_url }}/apirest.php/Group_Ticket?expand_dropdowns=true&range=0-999"
+    url: "{{ glpi_url }}/apirest.php/search/Group?criteria[0][field]=1&criteria[0][searchtype]=equals&criteria[0][value]={{ glpi_group_name | urlencode }}&range=0-1"
     method: GET
     headers:
       Session-Token: "{{ glpi_session_token }}"
     validate_certs: false
     status_code: 200
-  register: _group_tickets
+  register: _group_search
 
-# Extrair IDs dos tickets dos links href
-# O link href contém: "http://.../api/Ticket/3" — extraímos o ID do final
-- name: GLPI | Extrair IDs dos tickets do grupo {{ glpi_group_name }}
+- name: GLPI | Extrair ID do grupo
   ansible.builtin.set_fact:
-    _ticket_ids: "{{ _ticket_ids | default([]) + [item.links | selectattr('rel', 'equalto', 'Ticket') | map(attribute='href') | first | regex_replace('^.*/', '') | int] }}"
-  loop: "{{ _group_tickets.json | selectattr('groups_id', 'equalto', glpi_group_name) | list }}"
-  loop_control:
-    label: "Group_Ticket ID {{ item.id }}"
+    glpi_group_id: "{{ (_group_search.json.data | default([]) | first | default({})).2 | default('') }}"
+  # O campo 2 da search API do GLPI é o ID. O retorno vem como array: [count, name, id, ...]
 
-- name: GLPI | Debug — IDs extraídos
+- name: GLPI | Abortar se grupo nao encontrado
+  ansible.builtin.fail:
+    msg: "Grupo '{{ glpi_group_name }}' nao encontrado no GLPI"
+  when: glpi_group_id | length == 0
+
+- name: GLPI | Debug — grupo resolvido
+  ansible.builtin.debug:
+    msg: "Grupo '{{ glpi_group_name }}' = ID {{ glpi_group_id }}"
+
+# ═══════════════════════════════════════════════════════════
+# 2. BUSCAR Group_Ticket SÓ DESTE GRUPO
+# ═══════════════════════════════════════════════════════════
+# Se o grupo tiver >1000 tickets, paginamos localmente (raro, mas seguro)
+- name: GLPI | Inicializar paginacao local
+  ansible.builtin.set_fact:
+    _gt_page_start: 0
+    _gt_all_results: []
+    _gt_has_more: true
+
+- name: GLPI | Buscar Group_Ticket do grupo (paginado local)
+  ansible.builtin.include_tasks: buscar_group_ticket_pagina.yml
+  when: _gt_has_more | bool
+
+# ═══════════════════════════════════════════════════════════
+# 3. EXTRAIR IDs DOS TICKETS
+# ═══════════════════════════════════════════════════════════
+- name: GLPI | Extrair IDs dos tickets do grupo
+  ansible.builtin.set_fact:
+    _ticket_ids: "{{ _gt_all_results | map(attribute='tickets_id') | list | unique }}"
+
+- name: GLPI | Debug — IDs extraidos
   ansible.builtin.debug:
     msg: "Tickets do grupo {{ glpi_group_name }}: {{ _ticket_ids | length }} | IDs: {{ _ticket_ids }}"
 
-# Buscar detalhes de cada ticket pelo ID
+# ═══════════════════════════════════════════════════════════
+# 4. BUSCAR DETALHES E PROCESSAR
+# ═══════════════════════════════════════════════════════════
 - name: GLPI | Buscar detalhes dos tickets
   ansible.builtin.uri:
     url: "{{ glpi_url }}/apirest.php/Ticket/{{ item }}?expand_dropdowns=true"
@@ -54,7 +173,6 @@
   loop_control:
     label: "Ticket ID {{ item }}"
 
-# Normalizar para o formato esperado pelo processar_ticket.yml
 - name: GLPI | Normalizar tickets
   ansible.builtin.set_fact:
     _ticket_item:

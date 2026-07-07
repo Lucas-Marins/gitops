@@ -1,0 +1,19 @@
+---
+- name: "GLPI | Buscar Group_Ticket do grupo {{ glpi_group_id }} — range {{ _gt_page_start }}-{{ _gt_page_start + 999 }}"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/Group/{{ glpi_group_id }}/Group_Ticket?expand_dropdowns=true&range={{ _gt_page_start }}-{{ _gt_page_start + 999 }}"
+    method: GET
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _gt_page_result
+
+- name: "GLPI | Acumular resultados"
+  ansible.builtin.set_fact:
+    _gt_all_results: "{{ _gt_all_results + (_gt_page_result.json | default([])) }}"
+
+- name: "GLPI | Verificar se ha mais paginas"
+  ansible.builtin.set_fact:
+    _gt_has_more: "{{ (_gt_page_result.json | default([])) | length == 1000 }}"
+    _gt_page_start: "{{ _gt_page_start + 1000 }}"

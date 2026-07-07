@@ -33,6 +33,7 @@
   loop: "{{ glpi_search_result.json.data | default([]) }}"
   loop_control:
     label: "Ticket {{ item['2'] }}: {{ item['1'] | truncate(50) }}"
+  register: _ticket_items
 
 - name: GLPI | Consolidar tickets normalizados
   ansible.builtin.set_fact:

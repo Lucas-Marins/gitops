@@ -1,6 +1,5 @@
 ---
-# Entrypoint da role glpi_openshift_correcao
-# Busca tickets por usuário atribuído (Assigned to) + status aberto
+# Busca Group_Ticket diretamente (eficiente, não depende do total de tickets)
 
 - name: GLPI | Iniciar sessao
   ansible.builtin.uri:
@@ -16,54 +15,46 @@
   ansible.builtin.set_fact:
     glpi_session_token: "{{ glpi_session.json.session_token }}"
 
-# ═══════════════════════════════════════════════════════════
-# BUSCA POR USUÁRIO ATRIBUÍDO (Assigned to) + STATUS ABERTO
-# ═══════════════════════════════════════════════════════════
-- name: GLPI | Buscar tickets atribuídos ao usuário {{ glpi_assignee }}
+# Buscar Group_Ticket diretamente — retorna apenas relacionamentos do grupo ansible
+- name: GLPI | Buscar Group_Ticket do grupo ansible
   ansible.builtin.uri:
-    url: "{{ glpi_url }}/apirest.php/search/Ticket?criteria[0][field]=5&criteria[0][searchtype]=equals&criteria[0][value]={{ glpi_assignee | urlencode }}&criteria[1][field]=12&criteria[1][searchtype]=equals&criteria[1][value]={{ glpi_status_open }}&is_deleted=0"
+    url: "{{ glpi_url }}/apirest.php/Group_Ticket?expand_dropdowns=true&range=0-999"
     method: GET
     headers:
       Session-Token: "{{ glpi_session_token }}"
     validate_certs: false
     status_code: 200
-  register: _glpi_search
+  register: _group_tickets
 
-- name: GLPI | Verificar resultado
+- name: GLPI | Filtrar tickets do grupo ansible
   ansible.builtin.set_fact:
-    _tickets_raw: "{{ _glpi_search.json.data | default([]) }}"
-    _total: '{{ (_glpi_search.content_range | default("0-0/0") | regex_replace("^.*/(\d+)$", "\\1")) | int }}'
+    _ticket_ids: "{{ _group_tickets.json | selectattr('groups_id', 'equalto', 'ansible') | map(attribute='tickets_id') | list }}"
 
 - name: GLPI | Debug
   ansible.builtin.debug:
-    msg: "Assignee: {{ glpi_assignee }} | Tickets abertos: {{ _total }} | Nesta página: {{ _tickets_raw | length }}"
+    msg: "Tickets do grupo ansible: {{ _ticket_ids | length }} | IDs: {{ _ticket_ids }}"
 
-# Paginação só se necessário
-- name: GLPI | Buscar lotes adicionais
+# Buscar detalhes de cada ticket
+- name: GLPI | Buscar detalhes dos tickets
   ansible.builtin.uri:
-    url: "{{ glpi_url }}/apirest.php/search/Ticket?range={{ item }}-{{ item + glpi_page_size - 1 }}&criteria[0][field]=5&criteria[0][searchtype]=equals&criteria[0][value]={{ glpi_assignee | urlencode }}&criteria[1][field]=12&criteria[1][searchtype]=equals&criteria[1][value]={{ glpi_status_open }}&is_deleted=0"
+    url: "{{ glpi_url }}/apirest.php/Ticket/{{ item }}?expand_dropdowns=true"
     method: GET
     headers:
       Session-Token: "{{ glpi_session_token }}"
     validate_certs: false
     status_code: 200
-  register: _extra_batches
-  loop: "{{ range(glpi_page_size, _total | int, glpi_page_size) | list }}"
-  when: (_total | int) > glpi_page_size
+  register: _ticket_details
+  loop: "{{ _ticket_ids }}"
+  loop_control:
+    label: "Ticket {{ item }}"
 
-- name: GLPI | Juntar lotes extras
-  ansible.builtin.set_fact:
-    _tickets_raw: "{{ _tickets_raw + item.json.data | default([]) }}"
-  loop: "{{ _extra_batches.results | default([]) }}"
-  when: item.json.data is defined
-
-# Normalizar
+# Normalizar para o formato esperado pelo processar_ticket.yml
 - name: GLPI | Normalizar tickets
   ansible.builtin.set_fact:
     _ticket_item:
-      id: "{{ item['2'] | int }}"
-      name: "{{ item['1'] }}"
-  loop: "{{ _tickets_raw }}"
+      id: "{{ item.json.id }}"
+      name: "{{ item.json.name }}"
+  loop: "{{ _ticket_details.results }}"
   register: _ticket_items
 
 - name: GLPI | Consolidar

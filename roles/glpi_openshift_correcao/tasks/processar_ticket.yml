@@ -77,34 +77,6 @@
       become_user: "{{ vm_become_user }}"
       register: dnf_result
 
-    - name: "[Ticket {{ ticket_id }}] Verificar se needs-restarting existe"
-      ansible.builtin.command: which needs-restarting
-      delegate_to: "{{ vm_ip }}"
-      become: "{{ vm_become }}"
-      become_user: "{{ vm_become_user }}"
-      register: needs_restarting_bin
-      ignore_errors: true
-      changed_when: false
-
-    - name: "[Ticket {{ ticket_id }}] Verificar se reboot e necessario"
-      ansible.builtin.command: needs-restarting -r
-      delegate_to: "{{ vm_ip }}"
-      become: "{{ vm_become }}"
-      become_user: "{{ vm_become_user }}"
-      register: reboot_required
-      ignore_errors: true
-      changed_when: false
-      when: needs_restarting_bin.rc == 0
-
-    - name: "[Ticket {{ ticket_id }}] Rebootar VM se necessario"
-      ansible.builtin.reboot:
-        reboot_timeout: "{{ vm_ssh_timeout | default(300) }}"
-      delegate_to: "{{ vm_ip }}"
-      become: "{{ vm_become }}"
-      become_user: "{{ vm_become_user }}"
-      when: reboot_required.rc | default(0) != 0
-      register: reboot_done
-
     # ── 3. RELATORIO DE SUCESSO ──
     - name: "[Ticket {{ ticket_id }}] Formatar relatorio de sucesso"
       ansible.builtin.set_fact:
@@ -122,8 +94,7 @@
           stdout:
           {{ dnf_result.stdout | default('N/A') }}
 
-          Reboot necessario: {{ reboot_required.rc | default(0) != 0 }}
-          Reboot realizado: {{ reboot_done is defined and reboot_done is changed }}
+          OBS: Reboot NAO realizado. Servidor de producao — aguardar janela de manutencao supervisionada.
 
     # ── 4. ATUALIZAR GLPI (SO SE CHEGOU AQUI = SUCESSO) ──
     - name: "[Ticket {{ ticket_id }}] Adicionar follow-up de SUCESSO no GLPI"
@@ -153,7 +124,7 @@
           input:
             status: 6
             solutiontypes_id: 1
-            solution: "Correcao de vulnerabilidades aplicada automaticamente via Ansible + OpenShift Virtualization. Snapshot de seguranca: {{ snapshot_name }}."
+            solution: "Correcao de vulnerabilidades aplicada automaticamente via Ansible + OpenShift Virtualization. Snapshot de seguranca: {{ snapshot_name }}. Reboot pendente (servidor de producao)."
         body_format: json
         validate_certs: false
         status_code: [200]
@@ -165,7 +136,7 @@
           VM: {{ vm_name }} | IP: {{ vm_ip }}
           Snapshot: {{ snapshot_name }}
           dnf rc: {{ dnf_result.rc }}
-          Reboot: {{ reboot_done is defined and reboot_done is changed }}
+          Reboot: NAO REALIZADO (producao)
 
   # ═══════════════════════════════════════════════════════════
   # RESCUE: falha = NAO envia NADA ao GLPI. Ticket fica intacto.

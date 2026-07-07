@@ -17,6 +17,7 @@ vm_become: yes
 vm_become_user: root
 vm_ssh_timeout: 600
 
-glpi_group_name: "ansible"
+glpi_assignee: "ansible"
+glpi_status_open: "2"
 
 glpi_page_size: 100

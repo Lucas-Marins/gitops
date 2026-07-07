@@ -18,6 +18,8 @@ vm_become_user: root
 vm_ssh_timeout: 600
 
 glpi_group_name: "ansible"
-glpi_status_open: "2"
 
-glpi_page_size: 100
+# glpi_status_open: "2"
+# glpi_page_size: 100
+
+pacotes_criticos_regex: "(httpd|haproxy|nfs-utils|nfs-server)"

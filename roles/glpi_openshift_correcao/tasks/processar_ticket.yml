@@ -38,12 +38,6 @@
     - name: "[Ticket {{ ticket_id }}] Verificar se ha pacotes criticos"
       ansible.builtin.set_fact:
         criticos_detectados: "{{ pacotes_pendentes.stdout_lines | select('search', pacotes_criticos_regex) | list | unique }}"
-        _continuar: true
-
-    - name: "[Ticket {{ ticket_id }}] Marcar para NAO continuar se criticos detectados"
-      ansible.builtin.set_fact:
-        _continuar: false
-      when: criticos_detectados | length > 0
 
     - name: "[Ticket {{ ticket_id }}] Log local — pacotes criticos detectados, pulando"
       ansible.builtin.debug:
@@ -51,14 +45,18 @@
           Ticket {{ ticket_id }}: Pacotes criticos detectados ({{ criticos_detectados | join(', ') }}).
           Snapshot NAO criado. Update NAO aplicado. GLPI NAO alterado.
           Ticket permanece ABERTO no GLPI.
-      when: not (_continuar | default(true) | bool)
+      when: criticos_detectados | length > 0
 
     # ── 2. SNAPSHOT KUBEVIRT (so se seguro) ──
-    - name: "[Ticket {{ ticket_id }}] Gerar timestamp e nome do snapshot"
+    - name: "[Ticket {{ ticket_id }}] Gerar timestamp para snapshot"
       ansible.builtin.set_fact:
         snapshot_ts: "{{ now(fmt='%Y%m%d%H%M%S') }}"
+      when: criticos_detectados | length == 0
+
+    - name: "[Ticket {{ ticket_id }}] Montar nome do snapshot"
+      ansible.builtin.set_fact:
         snapshot_name: "{{ vm_name }}-{{ snapshot_prefix | default('glpi') }}-{{ ticket_id }}-{{ snapshot_ts }}"
-      when: _continuar | default(false) | bool
+      when: criticos_detectados | length == 0
 
     - name: "[Ticket {{ ticket_id }}] Criar snapshot no OpenShift Virtualization"
       kubernetes.core.k8s:
@@ -74,7 +72,7 @@
               apiGroup: kubevirt.io
               kind: VirtualMachine
               name: "{{ vm_name }}"
-      when: _continuar | default(false) | bool
+      when: criticos_detectados | length == 0
       register: snapshot_created
 
     - name: "[Ticket {{ ticket_id }}] Aguardar snapshot ficar ready"
@@ -90,7 +88,7 @@
         snapshot_status.resources[0].status.readyToUse | default(false)
       retries: 30
       delay: 10
-      when: _continuar | default(false) | bool
+      when: criticos_detectados | length == 0
 
     # ── 3. UPDATE DE SEGURANCA (so se seguro) ──
     - name: "[Ticket {{ ticket_id }}] dnf update --security"
@@ -100,7 +98,7 @@
       become: "{{ vm_become }}"
       become_user: "{{ vm_become_user }}"
       register: dnf_result
-      when: _continuar | default(false) | bool
+      when: criticos_detectados | length == 0
 
     # ── 4. RELATORIO E GLPI (so se seguro) ──
     - name: "[Ticket {{ ticket_id }}] Formatar relatorio de sucesso"
@@ -119,7 +117,7 @@
           {{ dnf_result.stdout | default('N/A') }}
 
           OBS: Reboot NAO realizado. Servidor de producao — aguardar janela de manutencao supervisionada.
-      when: _continuar | default(false) | bool
+      when: criticos_detectados | length == 0
 
     - name: "[Ticket {{ ticket_id }}] Adicionar follow-up de SUCESSO no GLPI"
       ansible.builtin.uri:
@@ -136,7 +134,7 @@
         body_format: json
         validate_certs: false
         status_code: [201, 200]
-      when: _continuar | default(false) | bool
+      when: criticos_detectados | length == 0
 
     - name: "[Ticket {{ ticket_id }}] Fechar chamado no GLPI"
       ansible.builtin.uri:
@@ -153,7 +151,7 @@
         body_format: json
         validate_certs: false
         status_code: [200]
-      when: _continuar | default(false) | bool
+      when: criticos_detectados | length == 0
 
     - name: "[Ticket {{ ticket_id }}] Resumo final — SUCESSO"
       ansible.builtin.debug:
@@ -162,7 +160,7 @@
           VM: {{ vm_name }} | IP: {{ vm_ip }}
           dnf rc: {{ dnf_result.rc }}
           Reboot: NAO REALIZADO (producao)
-      when: _continuar | default(false) | bool
+      when: criticos_detectados | length == 0
 
   # ═══════════════════════════════════════════════════════════
   # RESCUE: falha = NAO envia NADA ao GLPI. Ticket fica intacto.

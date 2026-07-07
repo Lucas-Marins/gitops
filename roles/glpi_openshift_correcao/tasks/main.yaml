@@ -17,10 +17,7 @@
 
 - name: GLPI | Buscar tickets do grupo {{ glpi_group_name }}
   ansible.builtin.uri:
-    url: >-
-      {{ glpi_url }}/apirest.php/search/Ticket?
-      criteria[0][field]=5&criteria[0][searchtype]=equals&criteria[0][value]={{ glpi_group_name | urlencode }}
-      &is_deleted=0
+    url: "{{ glpi_url }}/apirest.php/search/Ticket?criteria[0][field]=5&criteria[0][searchtype]=equals&criteria[0][value]={{ glpi_group_name | urlencode }}&is_deleted=0"
     method: GET
     headers:
       Session-Token: "{{ glpi_session_token }}"
@@ -39,11 +36,7 @@
 
 - name: GLPI | Buscar lotes adicionais
   ansible.builtin.uri:
-    url: >-
-      {{ glpi_url }}/apirest.php/search/Ticket?
-      range={{ item }}-{{ item + glpi_page_size - 1 }}
-      &criteria[0][field]=5&criteria[0][searchtype]=equals&criteria[0][value]={{ glpi_group_name | urlencode }}
-      &is_deleted=0
+    url: "{{ glpi_url }}/apirest.php/search/Ticket?range={{ item }}-{{ item + glpi_page_size - 1 }}&criteria[0][field]=5&criteria[0][searchtype]=equals&criteria[0][value]={{ glpi_group_name | urlencode }}&is_deleted=0"
     method: GET
     headers:
       Session-Token: "{{ glpi_session_token }}"

@@ -95,6 +95,7 @@
           {{ dnf_result.stdout | default('N/A') }}
 
           OBS: Reboot NAO realizado. Servidor de producao — aguardar janela de manutencao supervisionada.
+          
 
     # ── 4. ATUALIZAR GLPI (SO SE CHEGOU AQUI = SUCESSO) ──
     - name: "[Ticket {{ ticket_id }}] Adicionar follow-up de SUCESSO no GLPI"

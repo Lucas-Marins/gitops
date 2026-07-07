@@ -135,6 +135,7 @@
           Content-Type: "application/json"
         body:
           input:
+            tickets_id: "{{ ticket_id | int }}"
             content: "{{ patch_report }}"
             is_private: 0
         body_format: json

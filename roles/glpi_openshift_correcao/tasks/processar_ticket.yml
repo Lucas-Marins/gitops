@@ -27,8 +27,8 @@
     snapshot_name: "{{ vm_name }}-{{ snapshot_prefix | default('security') }}-{{ ticket_id }}-{{ snapshot_ts }}"
 
 # ═══════════════════════════════════════════════════════════
-# BLOCK: sucesso = follow-up + fecha ticket
-# RESCUE: falha = NAO envia nada ao GLPI, so loga local
+# BLOCK: sucesso = follow-up + fecha ticket no GLPI
+# RESCUE: falha = NAO envia nada ao GLPI
 # ═══════════════════════════════════════════════════════════
 - name: "[Ticket {{ ticket_id }}] Executar correcao"
   block:
@@ -36,9 +36,6 @@
     # ── 1. SNAPSHOT KUBEVIRT ──
     - name: "[Ticket {{ ticket_id }}] Criar snapshot no OpenShift Virtualization"
       kubernetes.core.k8s:
-        host: "{{ openshift_host }}"
-        api_key: "{{ openshift_api_key }}"
-        validate_certs: "{{ openshift_validate_certs | default(false) }}"
         state: present
         definition:
           apiVersion: "{{ snapshot_api_version }}"
@@ -55,9 +52,6 @@
 
     - name: "[Ticket {{ ticket_id }}] Aguardar snapshot ficar ready"
       kubernetes.core.k8s_info:
-        host: "{{ openshift_host }}"
-        api_key: "{{ openshift_api_key }}"
-        validate_certs: "{{ openshift_validate_certs | default(false) }}"
         api_version: "{{ snapshot_api_version }}"
         kind: VirtualMachineSnapshot
         name: "{{ snapshot_name }}"
@@ -131,7 +125,7 @@
           Reboot necessario: {{ reboot_required.rc | default(0) != 0 }}
           Reboot realizado: {{ reboot_done is defined and reboot_done is changed }}
 
-    # ── 4. ATUALIZAR GLPI: FOLLOW-UP + FECHAR (SO SE CHEGOU AQUI) ──
+    # ── 4. ATUALIZAR GLPI (SO SE CHEGOU AQUI = SUCESSO) ──
     - name: "[Ticket {{ ticket_id }}] Adicionar follow-up de SUCESSO no GLPI"
       ansible.builtin.uri:
         url: "{{ glpi_url }}/apirest.php/Ticket/{{ ticket_id }}/TicketFollowup"

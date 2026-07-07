@@ -1,0 +1,50 @@
+---
+# Entrypoint da role glpi_openshift_correcao
+# Orquestra: autenticar GLPI -> buscar tickets -> processar cada um -> fechar sessao
+
+- name: GLPI | Iniciar sessao na API (Basic Auth)
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/initSession"
+    method: GET
+    headers:
+      Authorization: "Basic {{ (glpi_user + ':' + glpi_pass) | b64encode }}"
+    validate_certs: false
+    status_code: 200
+  register: glpi_session
+
+- name: GLPI | Guardar session token
+  ansible.builtin.set_fact:
+    glpi_session_token: "{{ glpi_session.json.session_token }}"
+
+- name: GLPI | Buscar tickets de vulnerabilidades
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/Ticket?searchText[0]={{ glpi_search_filter | urlencode }}&criteria[0][field]=1&criteria[0][searchtype]=contains&criteria[0][value]={{ glpi_search_filter | urlencode }}&is_deleted=0"
+    method: GET
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+    validate_certs: false
+    status_code: 200
+  register: glpi_tickets
+
+- name: GLPI | Debug tickets
+  debug:
+    msg: "Tickets encontrados: {{ glpi_tickets.json | default([]) | length }}"
+
+# - name: GLPI | Processar tickets encontrados
+#   ansible.builtin.include_tasks: processar_ticket.yml
+#   loop: "{{ glpi_tickets.json | default([]) }}"
+#   loop_control:
+#     loop_var: ticket
+#   when:
+#     - glpi_tickets.json is defined
+#     - glpi_tickets.json | length > 0
+
+# - name: GLPI | Encerrar sessao
+#   ansible.builtin.uri:
+#     url: "{{ glpi_url }}/apirest.php/killSession"
+#     method: GET
+#     headers:
+#       Session-Token: "{{ glpi_session_token }}"
+#     validate_certs: false
+#     status_code: 200
+#   ignore_errors: true

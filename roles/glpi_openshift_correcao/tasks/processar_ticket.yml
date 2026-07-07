@@ -1,0 +1,163 @@
+---
+# Processa um unico ticket de correcao de vulnerabilidades
+# Variavel de entrada: 'ticket' (loop_var do include_tasks)
+
+- name: "[Ticket {{ ticket.id }}] Extrair nome da VM e IP do titulo"
+  ansible.builtin.set_fact:
+    ticket_id: "{{ ticket.id }}"
+    ticket_url: "{{ glpi_url }}/front/ticket.form.php?id={{ ticket.id }}"
+    vm_name: "{{ ticket.name | regex_search('Nome:\\s*([A-Za-z0-9_-]+)', '\\1') | first | default('') | trim }}"
+    vm_ip: "{{ ticket.name | regex_search('IP:\\s*([0-9.]+)', '\\1') | first | default('') | trim }}"
+
+- name: "[Ticket {{ ticket_id }}] Debug — dados extraidos"
+  ansible.builtin.debug:
+    msg: "VM: {{ vm_name }} | IP: {{ vm_ip }} | Namespace: {{ openshift_namespace }}"
+
+- name: "[Ticket {{ ticket_id }}] Abortar se VM nao identificada"
+  ansible.builtin.fail:
+    msg: "Nao foi possivel extrair nome da VM do titulo: {{ ticket.name }}"
+  when: vm_name | length == 0
+
+- name: "[Ticket {{ ticket_id }}] Gerar timestamp unico para snapshot"
+  ansible.builtin.set_fact:
+    snapshot_ts: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+    snapshot_name: "{{ vm_name }}-{{ snapshot_prefix }}-{{ ticket_id }}-{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+# ═══════════════════════════════════════════════════════════
+# 1. SNAPSHOT KUBEVIRT
+# ═══════════════════════════════════════════════════════════
+- name: "[Ticket {{ ticket_id }}] Criar snapshot no OpenShift Virtualization"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: "{{ snapshot_api_version }}"
+      kind: VirtualMachineSnapshot
+      metadata:
+        name: "{{ snapshot_name }}"
+        namespace: "{{ openshift_namespace }}"
+      spec:
+        source:
+          apiGroup: kubevirt.io
+          kind: VirtualMachine
+          name: "{{ vm_name }}"
+  register: snapshot_created
+
+- name: "[Ticket {{ ticket_id }}] Aguardar snapshot ficar ready"
+  kubernetes.core.k8s_info:
+    api_version: "{{ snapshot_api_version }}"
+    kind: VirtualMachineSnapshot
+    name: "{{ snapshot_name }}"
+    namespace: "{{ openshift_namespace }}"
+  register: snapshot_status
+  until: >
+    snapshot_status.resources is defined and
+    snapshot_status.resources | length > 0 and
+    snapshot_status.resources[0].status.readyToUse | default(false)
+  retries: 30
+  delay: 10
+
+- name: "[Ticket {{ ticket_id }}] Confirmar snapshot pronto"
+  ansible.builtin.debug:
+    msg: "Snapshot {{ snapshot_name }} esta pronto no namespace {{ openshift_namespace }}"
+
+# ═══════════════════════════════════════════════════════════
+# 2. UPDATE DE SEGURANCA
+# ═══════════════════════════════════════════════════════════
+- name: "[Ticket {{ ticket_id }}] dnf update --security"
+  ansible.builtin.shell: |
+    dnf update --security -y 2>&1
+  delegate_to: "{{ vm_ip }}"
+  become: "{{ vm_become }}"
+  become_user: "{{ vm_become_user }}"
+  register: dnf_result
+  ignore_errors: true
+
+- name: "[Ticket {{ ticket_id }}] Verificar se reboot e necessario"
+  ansible.builtin.command: needs-restarting -r
+  delegate_to: "{{ vm_ip }}"
+  become: "{{ vm_become }}"
+  become_user: "{{ vm_become_user }}"
+  register: reboot_required
+  ignore_errors: true
+  changed_when: false
+
+- name: "[Ticket {{ ticket_id }}] Rebootar VM se necessario"
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ vm_ssh_timeout }}"
+  delegate_to: "{{ vm_ip }}"
+  become: "{{ vm_become }}"
+  become_user: "{{ vm_become_user }}"
+  when: reboot_required.rc != 0
+  register: reboot_done
+
+# ═══════════════════════════════════════════════════════════
+# 3. CONSOLIDAR RELATORIO
+# ═══════════════════════════════════════════════════════════
+- name: "[Ticket {{ ticket_id }}] Formatar relatorio de correcao"
+  ansible.builtin.set_fact:
+    patch_report: |
+      === Correcao Automatica GLPI #{{ ticket_id }} ===
+      VM OpenShift: {{ vm_name }}
+      Namespace: {{ openshift_namespace }}
+      IP: {{ vm_ip }}
+      Snapshot: {{ snapshot_name }}
+      URL: {{ ticket_url }}
+
+      --- dnf update --security ---
+      RC: {{ dnf_result.rc }}
+      {% if dnf_result.rc == 0 %}
+      SUCESSO
+      stdout:
+      {{ dnf_result.stdout | default('N/A') }}
+      {% else %}
+      FALHA
+      stderr:
+      {{ dnf_result.stderr | default('N/A') }}
+      {% endif %}
+
+      Reboot necessario: {{ reboot_required.rc != 0 }}
+      Reboot realizado: {{ reboot_done is defined and reboot_done is changed }}
+
+# ═══════════════════════════════════════════════════════════
+# 4. ATUALIZAR GLPI
+# ═══════════════════════════════════════════════════════════
+- name: "[Ticket {{ ticket_id }}] Adicionar follow-up no GLPI"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/Ticket/{{ ticket_id }}/TicketFollowup"
+    method: POST
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+      Content-Type: "application/json"
+    body:
+      input:
+        content: "{{ patch_report }}"
+        is_private: 0
+    body_format: json
+    validate_certs: false
+    status_code: [201, 200]
+
+- name: "[Ticket {{ ticket_id }}] Fechar chamado no GLPI"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/Ticket/{{ ticket_id }}"
+    method: PUT
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+      Content-Type: "application/json"
+    body:
+      input:
+        status: "6"
+        solutiontypes_id: "1"
+        solution: "Correcao de vulnerabilidades aplicada automaticamente via Ansible + OpenShift Virtualization. Snapshot de seguranca criado: {{ snapshot_name }}."
+    body_format: json
+    validate_certs: false
+    status_code: [200]
+
+- name: "[Ticket {{ ticket_id }}] Resumo final"
+  ansible.builtin.debug:
+    msg: |
+      Ticket {{ ticket_id }} finalizado.
+      VM: {{ vm_name }} | IP: {{ vm_ip }}
+      Snapshot: {{ snapshot_name }}
+      dnf rc: {{ dnf_result.rc }}
+      Reboot: {{ reboot_done is defined and reboot_done is changed }}
+      Status GLPI: Fechado

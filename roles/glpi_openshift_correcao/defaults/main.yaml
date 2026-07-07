@@ -1,0 +1,18 @@
+---
+# GLPI
+glpi_url: ""
+glpi_user: "glpi"
+glpi_pass: ""
+glpi_search_filter: "Correção"
+
+# OpenShift
+openshift_namespace: "linuxvm"
+snapshot_api_version: "snapshot.kubevirt.io/v1beta1"
+
+# Snapshot
+snapshot_prefix: "glpi"
+
+# VM update
+vm_become: yes
+vm_become_user: root
+vm_ssh_timeout: 600

@@ -1,0 +1,12 @@
+---
+- name: Automação GLPI + OpenShift Virtualization — Correção de Vulnerabilidades (Role)
+  hosts: localhost
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.11
+  roles:
+    - role: glpi_openshift_correcao
+      vars:
+        glpi_user: "glpi"
+        glpi_pass: "glpi"
+        glpi_url: "https://glpi-glpi.apps.cluster-dlpnc.dynamic.redhatworkshops.io"

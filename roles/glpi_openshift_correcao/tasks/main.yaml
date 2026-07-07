@@ -1,6 +1,5 @@
 ---
 # Entrypoint da role glpi_openshift_correcao
-# Orquestra: autenticar GLPI -> buscar tickets -> processar cada um -> fechar sessao
 
 - name: GLPI | Iniciar sessao na API (Basic Auth)
   ansible.builtin.uri:
@@ -26,48 +25,29 @@
     status_code: 200
   register: glpi_search_result
 
-- name: GLPI | Extrair tickets do formato search
-  ansible.builtin.set_fact:
-    glpi_tickets: >-
-      {{
-        glpi_search_result.json.data | default([]) | map('combine', {}) | list
-        | map('dict2items')
-        | map('selectattr', 'key', 'equalto', '1')
-        | map('map', attribute='value')
-        | map('first')
-        | list
-      }}
-  when: glpi_search_result.json.data is defined
-
-- name: GLPI | Normalizar tickets (search API -> formato padrao)
+- name: GLPI | Normalizar tickets do formato search
   ansible.builtin.set_fact:
     _ticket_item:
       id: "{{ item['2'] | int }}"
       name: "{{ item['1'] }}"
   loop: "{{ glpi_search_result.json.data | default([]) }}"
-  register: _ticket_items
-
-- name: GLPI | Consolidar tickets
-  ansible.builtin.set_fact:
-    glpi_tickets: "{{ _ticket_items.results | map(attribute='ansible_facts._ticket_item') | list }}"
+  loop_control:
+    label: "Ticket {{ item['2'] }}: {{ item['1'] | truncate(50) }}"
 
 - name: GLPI | Consolidar tickets normalizados
   ansible.builtin.set_fact:
-    glpi_tickets: "{{ _ticket_map.results | map(attribute='ansible_facts.glpi_tickets') | list | flatten }}"
+    glpi_tickets: "{{ _ticket_items.results | map(attribute='ansible_facts._ticket_item') | list }}"
 
 - name: GLPI | Debug — tickets encontrados
   ansible.builtin.debug:
-    msg: "Tickets filtrados: {{ glpi_tickets | map(attribute='id') | list }} (total: {{ glpi_tickets | length }})"
-
+    msg: "Total: {{ glpi_tickets | length }} | IDs: {{ glpi_tickets | map(attribute='id') | list }}"
 
 # - name: GLPI | Processar tickets encontrados
 #   ansible.builtin.include_tasks: processar_ticket.yml
-#   loop: "{{ glpi_tickets.json | default([]) }}"
+#   loop: "{{ glpi_tickets }}"
 #   loop_control:
 #     loop_var: ticket
-#   when:
-#     - glpi_tickets.json is defined
-#     - glpi_tickets.json | length > 0
+#   when: glpi_tickets | length > 0
 
 # - name: GLPI | Encerrar sessao
 #   ansible.builtin.uri:

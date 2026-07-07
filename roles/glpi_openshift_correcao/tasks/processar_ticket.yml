@@ -1,8 +1,6 @@
 ---
 # Processa um unico ticket de correcao de vulnerabilidades
 # Variavel de entrada: 'ticket' (loop_var do include_tasks)
-# Variaveis esperadas da role: glpi_session_token, glpi_url, openshift_namespace,
-#   snapshot_api_version, snapshot_prefix, vm_become, vm_become_user, vm_ssh_timeout
 
 - name: "[Ticket {{ ticket.id }}] Extrair nome da VM e IP do titulo"
   ansible.builtin.set_fact:
@@ -17,12 +15,15 @@
 
 - name: "[Ticket {{ ticket_id }}] Abortar se VM nao identificada"
   ansible.builtin.fail:
-    msg: "Nao foi possivel extrair nome/ IP do titulo: {{ ticket.name }}"
+    msg: "Nao foi possivel extrair nome/IP do titulo: {{ ticket.name }}"
   when: vm_name | length == 0 or vm_ip | length == 0
 
 - name: "[Ticket {{ ticket_id }}] Gerar timestamp unico para snapshot"
   ansible.builtin.set_fact:
     snapshot_ts: "{{ now(fmt='%Y%m%d%H%M%S') }}"
+
+- name: "[Ticket {{ ticket_id }}] Montar nome do snapshot"
+  ansible.builtin.set_fact:
     snapshot_name: "{{ vm_name }}-{{ snapshot_prefix | default('security') }}-{{ ticket_id }}-{{ snapshot_ts }}"
 
 # ═══════════════════════════════════════════════════════════
@@ -118,87 +119,3 @@
           SUCESSO
           stdout:
           {{ dnf_result.stdout | default('N/A') }}
-
-          Reboot necessario: {{ reboot_required.rc | default(0) != 0 }}
-          Reboot realizado: {{ reboot_done is defined and reboot_done is changed }}
-
-    - name: "[Ticket {{ ticket_id }}] Adicionar follow-up de sucesso"
-      ansible.builtin.uri:
-        url: "{{ glpi_url }}/apirest.php/Ticket/{{ ticket_id }}/TicketFollowup"
-        method: POST
-        headers:
-          Session-Token: "{{ glpi_session_token }}"
-          Content-Type: "application/json"
-        body:
-          input:
-            content: "{{ patch_report }}"
-            is_private: 0
-        body_format: json
-        validate_certs: false
-        status_code: [201, 200]
-
-    - name: "[Ticket {{ ticket_id }}] Fechar chamado no GLPI"
-      ansible.builtin.uri:
-        url: "{{ glpi_url }}/apirest.php/Ticket/{{ ticket_id }}"
-        method: PUT
-        headers:
-          Session-Token: "{{ glpi_session_token }}"
-          Content-Type: "application/json"
-        body:
-          input:
-            status: "6"
-            solutiontypes_id: "1"
-            solution: "Correcao aplicada automaticamente via Ansible + OpenShift Virtualization. Snapshot: {{ snapshot_name }}."
-        body_format: json
-        validate_certs: false
-        status_code: [200]
-
-    - name: "[Ticket {{ ticket_id }}] Resumo final — SUCESSO"
-      ansible.builtin.debug:
-        msg: |
-          Ticket {{ ticket_id }} FECHADO.
-          VM: {{ vm_name }} | IP: {{ vm_ip }}
-          Snapshot: {{ snapshot_name }}
-          dnf rc: {{ dnf_result.rc }}
-          Reboot: {{ reboot_done is defined and reboot_done is changed }}
-
-  # ═══════════════════════════════════════════════════════════
-  # RESCUE: algo quebrou (snapshot, dnf, reboot, etc.)
-  # ═══════════════════════════════════════════════════════════
-  rescue:
-    - name: "[Ticket {{ ticket_id }}] Identificar falha"
-      ansible.builtin.set_fact:
-        _failed_task: "{{ ansible_failed_task.name | default('desconhecida') }}"
-        _failed_result: "{{ ansible_failed_result | default({}) }}"
-
-    - name: "[Ticket {{ ticket_id }}] Formatar relatorio de FALHA"
-      ansible.builtin.set_fact:
-        error_report: |
-          === FALHA na Correcao Automatica GLPI #{{ ticket_id }} ===
-          VM: {{ vm_name }} | IP: {{ vm_ip }}
-          Snapshot: {{ snapshot_name | default('N/A') }}
-          URL: {{ ticket_url }}
-          Falha na task: {{ _failed_task }}
-          Erro: {{ _failed_result.msg | default(_failed_result.stderr | default('N/A')) }}
-
-    - name: "[Ticket {{ ticket_id }}] Adicionar follow-up de ERRO (ticket permanece ABERTO)"
-      ansible.builtin.uri:
-        url: "{{ glpi_url }}/apirest.php/Ticket/{{ ticket_id }}/TicketFollowup"
-        method: POST
-        headers:
-          Session-Token: "{{ glpi_session_token }}"
-          Content-Type: "application/json"
-        body:
-          input:
-            content: "{{ error_report }}"
-            is_private: 0
-        body_format: json
-        validate_certs: false
-        status_code: [201, 200]
-
-    - name: "[Ticket {{ ticket_id }}] Resumo final — FALHA"
-      ansible.builtin.debug:
-        msg: |
-          Ticket {{ ticket_id }} MANTIDO ABERTO devido a falha.
-          Task que falhou: {{ _failed_task }}
-          Erro: {{ _failed_result.msg | default(_failed_result.stderr | default('N/A')) }}

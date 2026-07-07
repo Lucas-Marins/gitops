@@ -1,4 +1,3 @@
----
 # Entrypoint da role glpi_openshift_correcao
 # Busca Group_Ticket e extrai ID do ticket do link href
 

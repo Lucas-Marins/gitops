@@ -39,22 +39,17 @@
       }}
   when: glpi_search_result.json.data is defined
 
-# Formato correto: mapear campo "1"=nome, "2"=id
-- name: GLPI | Normalizar tickets para formato padrao
+- name: GLPI | Normalizar tickets (search API -> formato padrao)
   ansible.builtin.set_fact:
-    glpi_tickets: >-
-      {{
-        glpi_search_result.json.data | default([]) | map(
-          {
-            'id': item['2'] | int,
-            'name': item['1']
-          }
-        ) | list
-      }}
-  vars:
-    item: "{{ item }}"
+    _ticket_item:
+      id: "{{ item['2'] | int }}"
+      name: "{{ item['1'] }}"
   loop: "{{ glpi_search_result.json.data | default([]) }}"
-  register: _ticket_map
+  register: _ticket_items
+
+- name: GLPI | Consolidar tickets
+  ansible.builtin.set_fact:
+    glpi_tickets: "{{ _ticket_items.results | map(attribute='ansible_facts._ticket_item') | list }}"
 
 - name: GLPI | Consolidar tickets normalizados
   ansible.builtin.set_fact:

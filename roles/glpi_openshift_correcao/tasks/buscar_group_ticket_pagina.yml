@@ -1,7 +1,7 @@
 ---
 - name: "GLPI | Buscar Group_Ticket do grupo {{ glpi_group_id }} — range {{ _gt_page_start }}-{{ _gt_page_start + 999 }}"
   ansible.builtin.uri:
-    url: "{{ glpi_url }}/apirest.php/Group/{{ glpi_group_id }}/Group_Ticket?expand_dropdowns=true&range={{ _gt_page_start }}-{{ _gt_page_start + 999 }}"
+    url: "{{ glpi_url }}/apirest.php/Group/{{ glpi_group_id }}/Group_Ticket?range={{ _gt_page_start }}-{{ _gt_page_start + 999 }}"
     method: GET
     headers:
       Session-Token: "{{ glpi_session_token }}"

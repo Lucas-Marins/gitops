@@ -90,6 +90,7 @@
 ---
 # Entrypoint otimizado: busca direta pelo grupo, sem varrer o sistema inteiro
 
+
 - name: GLPI | Iniciar sessao
   ansible.builtin.uri:
     url: "{{ glpi_url }}/apirest.php/initSession"
@@ -105,26 +106,25 @@
     glpi_session_token: "{{ glpi_session.json.session_token }}"
 
 # ═══════════════════════════════════════════════════════════
-# 1. RESOLVER NOME DO GRUPO → ID (search API, exata)
+# 1. LISTAR GRUPOS (sao poucos — dezenas no maximo)
 # ═══════════════════════════════════════════════════════════
-- name: GLPI | Buscar ID do grupo pelo nome
+- name: GLPI | Listar grupos para achar ID pelo nome
   ansible.builtin.uri:
-    url: "{{ glpi_url }}/apirest.php/search/Group?criteria[0][field]=1&criteria[0][searchtype]=equals&criteria[0][value]={{ glpi_group_name | urlencode }}&range=0-1"
+    url: "{{ glpi_url }}/apirest.php/Group?range=0-999"
     method: GET
     headers:
       Session-Token: "{{ glpi_session_token }}"
     validate_certs: false
     status_code: 200
-  register: _group_search
+  register: _all_groups
 
-- name: GLPI | Extrair ID do grupo
+- name: GLPI | Extrair ID do grupo pelo nome
   ansible.builtin.set_fact:
-    glpi_group_id: "{{ (_group_search.json.data | default([]) | first | default({})).2 | default('') }}"
-  # O campo 2 da search API do GLPI é o ID. O retorno vem como array: [count, name, id, ...]
+    glpi_group_id: "{{ (_all_groups.json | selectattr('name', 'equalto', glpi_group_name) | first | default({})).id | default('') }}"
 
 - name: GLPI | Abortar se grupo nao encontrado
   ansible.builtin.fail:
-    msg: "Grupo '{{ glpi_group_name }}' nao encontrado no GLPI"
+    msg: "Grupo '{{ glpi_group_name }}' nao encontrado. Existentes: {{ _all_groups.json | map(attribute='name') | list }}"
   when: glpi_group_id | length == 0
 
 - name: GLPI | Debug — grupo resolvido
@@ -132,9 +132,9 @@
     msg: "Grupo '{{ glpi_group_name }}' = ID {{ glpi_group_id }}"
 
 # ═══════════════════════════════════════════════════════════
-# 2. BUSCAR Group_Ticket SÓ DESTE GRUPO
+# 2. BUSCAR Group_Ticket SÓ DESTE GRUPO (SEM expand_dropdowns!)
 # ═══════════════════════════════════════════════════════════
-# Se o grupo tiver >1000 tickets, paginamos localmente (raro, mas seguro)
+# Sem expand_dropdowns, tickets_id e groups_id vem como inteiros.
 - name: GLPI | Inicializar paginacao local
   ansible.builtin.set_fact:
     _gt_page_start: 0
@@ -146,7 +146,7 @@
   when: _gt_has_more | bool
 
 # ═══════════════════════════════════════════════════════════
-# 3. EXTRAIR IDs DOS TICKETS
+# 3. EXTRAIR IDs DOS TICKETS (numericos, limpos)
 # ═══════════════════════════════════════════════════════════
 - name: GLPI | Extrair IDs dos tickets do grupo
   ansible.builtin.set_fact:

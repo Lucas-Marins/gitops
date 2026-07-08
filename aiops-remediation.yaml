@@ -142,23 +142,23 @@
 
         - name: Extrair CAUSA_RAIZ
           ansible.builtin.set_fact:
-            ai_causa_raiz: "{{ (ai_raw_response | regex_search('CAUSA_RAIZ:\s*(.+)', '\1') | default(['NAO IDENTIFICADA'], true)) | first }}"
+            ai_causa_raiz: "{{ (ai_raw_response | regex_search('CAUSA_RAIZ:\\s*(.+)', '\\1') | default(['NAO IDENTIFICADA'], true)) | first }}"
 
         - name: Extrair CONFIANCA
           ansible.builtin.set_fact:
-            ai_confianca: "{{ (ai_raw_response | regex_search('CONFIANCA:\s*(\w+)', '\1') | default(['baixa'], true)) | first }}"
+            ai_confianca: "{{ (ai_raw_response | regex_search('CONFIANCA:\\s*(\\w+)', '\\1') | default(['baixa'], true)) | first }}"
 
         - name: Extrair ACAO_REMEDIACAO
           ansible.builtin.set_fact:
-            ai_acao: "{{ (ai_raw_response | regex_search('ACAO_REMEDIACAO:\s*(.+)', '\1') | default(['N/A'], true)) | first }}"
+            ai_acao: "{{ (ai_raw_response | regex_search('ACAO_REMEDIACAO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
 
         - name: Extrair RISCO_REMEDIACAO
           ansible.builtin.set_fact:
-            ai_risco: "{{ (ai_raw_response | regex_search('RISCO_REMEDIACAO:\s*(.+)', '\1') | default(['N/A'], true)) | first }}"
+            ai_risco: "{{ (ai_raw_response | regex_search('RISCO_REMEDIACAO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
 
         - name: Extrair EXPLICACAO
           ansible.builtin.set_fact:
-            ai_explicacao: "{{ (ai_raw_response | regex_search('EXPLICACAO:\s*(.+)', '\1') | default(['N/A'], true)) | first }}"
+            ai_explicacao: "{{ (ai_raw_response | regex_search('EXPLICACAO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
       when: llm_available
 
     - name: Diagnostico fallback (IA indisponivel)

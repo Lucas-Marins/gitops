@@ -1,17 +1,13 @@
 ---
-- name: AIOps - Diagnostico e Remediacao com LLM
+- name: AIOps - Diagnostico com IA
   hosts: localhost
   gather_facts: false
   vars:
     llm_endpoint: "https://ollama-route-aiops-llm.apps.cluster-dlpnc.dynamic.redhatworkshops.io/v1/chat/completions"
     llm_model: "phi3:mini"
     report_dir: "/tmp/aiops_reports"
-    llm_available: true
 
   tasks:
-    # ============================================================
-    # 1. VALIDACAO
-    # ============================================================
     - name: Validar variaveis do evento
       ansible.builtin.fail:
         msg: "event_alert_name ou event_namespace nao definidos"
@@ -23,7 +19,7 @@
         state: directory
         mode: '0755'
 
-    - name: Mostrar incidente recebido
+    - name: Mostrar incidente
       ansible.builtin.debug:
         msg: |
           INCIDENTE: {{ event_alert_name }}
@@ -32,9 +28,6 @@
           Severidade: {{ event_severity }}
           Descricao: {{ event_description | default('N/A') }}
 
-    # ============================================================
-    # 2. COLETA DE DADOS
-    # ============================================================
     - name: Coletar logs do pod
       kubernetes.core.k8s_log:
         name: "{{ event_pod }}"
@@ -81,13 +74,6 @@
       ignore_errors: true
       when: parent_deployment | default('') | length > 0 and parent_deployment != 'N/A'
 
-    - name: Mostrar deployment encontrado
-      ansible.builtin.debug:
-        msg: "Deployment pai: {{ parent_deployment | default('NAO ENCONTRADO') }}"
-
-    # ============================================================
-    # 3. TENTAR CONSULTAR IA (com timeout e fallback)
-    # ============================================================
     - name: Consultar IA para diagnostico
       ansible.builtin.uri:
         url: "{{ llm_endpoint }}"
@@ -105,21 +91,33 @@
                 Voce e um SRE senior especialista em OpenShift/Kubernetes.
                 Analise o incidente e responda EXATAMENTE no formato:
 
-                CAUSA_RAIZ: <diagnostico>
+                CAUSA_RAIZ: <diagnostico tecnico em uma linha>
                 CONFIANCA: <alta/media/baixa>
-                ACAO_REMEDIACAO: <comando oc/kubectl>
-                RISCO_REMEDIACAO: <nivel>
+                SOLUCAO: <passo a passo claro para resolver>
+                COMANDO: <comando oc ou kubectl exato>
+                PREVENCAO: <como evitar que volte a acontecer>
 
-                DADOS:
+                DADOS DO INCIDENTE:
                 - Alerta: {{ event_alert_name }}
                 - Namespace: {{ event_namespace }}
                 - Pod: {{ event_pod | default('N/A') }}
                 - Severidade: {{ event_severity }}
+                - Descricao: {{ event_description | default('N/A') }}
                 - Deployment: {{ parent_deployment | default('N/A') }}
-                - Logs: {{ pod_logs.log | default('N/A') | truncate(2000) }}
-                - Status: {{ pod_describe | truncate(1500) }}
+
+                LOGS DO POD:
+                {{ pod_logs.log | default('N/A') | truncate(3000) }}
+
+                STATUS DO POD:
+                {{ pod_describe | truncate(2000) }}
+
+                EVENTOS DO NAMESPACE:
+                {{ namespace_events.resources | default([]) | map(attribute='message') | list | join('\n') | truncate(2000) }}
+
+                STATUS DO DEPLOYMENT:
+                {{ deployment_status.resources[0].status | default('N/A') | to_nice_yaml | truncate(1500) }}
           temperature: 0.1
-          max_tokens: 1000
+          max_tokens: 1500
           stream: false
         status_code: 200
         timeout: 180
@@ -134,128 +132,80 @@
       ansible.builtin.set_fact:
         llm_available: "{{ llm_response.status is defined and llm_response.status == 200 }}"
 
-    - name: Extrair diagnostico da IA
+    - name: Processar resposta da IA
       block:
         - name: Extrair resposta bruta
           ansible.builtin.set_fact:
             ai_raw_response: "{{ llm_response.json.choices[0].message.content }}"
 
-        - name: Extrair CAUSA_RAIZ
+        - name: Extrair campos
           ansible.builtin.set_fact:
             ai_causa_raiz: "{{ (ai_raw_response | regex_search('CAUSA_RAIZ:\\s*(.+)', '\\1') | default(['NAO IDENTIFICADA'], true)) | first }}"
-
-        - name: Extrair CONFIANCA
-          ansible.builtin.set_fact:
             ai_confianca: "{{ (ai_raw_response | regex_search('CONFIANCA:\\s*(\\w+)', '\\1') | default(['baixa'], true)) | first }}"
-
-        - name: Extrair ACAO_REMEDIACAO
-          ansible.builtin.set_fact:
-            ai_acao: "{{ (ai_raw_response | regex_search('ACAO_REMEDIACAO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
-
-        - name: Extrair RISCO_REMEDIACAO
-          ansible.builtin.set_fact:
-            ai_risco: "{{ (ai_raw_response | regex_search('RISCO_REMEDIACAO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
-
-        - name: Extrair EXPLICACAO
-          ansible.builtin.set_fact:
-            ai_explicacao: "{{ (ai_raw_response | regex_search('EXPLICACAO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
+            ai_solucao: "{{ (ai_raw_response | regex_search('SOLUCAO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
+            ai_comando: "{{ (ai_raw_response | regex_search('COMANDO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
+            ai_prevencao: "{{ (ai_raw_response | regex_search('PREVENCAO:\\s*(.+)', '\\1') | default(['N/A'], true)) | first }}"
       when: llm_available
 
-    - name: Diagnostico fallback (IA indisponivel)
+    - name: Fallback - IA indisponivel
       ansible.builtin.set_fact:
-        ai_causa_raiz: "IA indisponivel - analise baseada em heuristica"
+        ai_causa_raiz: "IA indisponivel - analise heuristica"
         ai_confianca: "media"
-        ai_acao: "oc rollout restart deployment/{{ parent_deployment }} -n {{ event_namespace }}"
-        ai_risco: "baixo - restart de deployment e operacao padrao"
-        ai_explicacao: "O pod {{ event_pod | default('N/A') }} apresenta falha. Como a IA nao esta disponivel, a acao recomendada e restart do deployment."
+        ai_solucao: "Verificar logs do pod e status do deployment. Reiniciar o deployment se necessario."
+        ai_comando: "oc rollout restart deployment/{{ parent_deployment }} -n {{ event_namespace }}"
+        ai_prevencao: "Configurar liveness/readiness probes e resource limits adequados."
       when: not llm_available
 
-    # ============================================================
-    # 4. MOSTRAR RESULTADO
-    # ============================================================
     - name: Mostrar diagnostico
       ansible.builtin.debug:
         msg: |
           ============================================================
-          {% if llm_available %}🤖 DIAGNOSTICO DA IA{% else %}⚠️ DIAGNOSTICO FALLBACK (IA indisponivel){% endif %}
+          {% if llm_available %}DIAGNOSTICO DA IA{% else %}DIAGNOSTICO FALLBACK{% endif %}
           ============================================================
-          CAUSA RAIZ:    {{ ai_causa_raiz }}
-          CONFIANCA:     {{ ai_confianca }}
-          ACAO MANUAL:   {{ ai_acao }}
-          RISCO:         {{ ai_risco }}
+          CAUSA RAIZ:  {{ ai_causa_raiz }}
+          CONFIANCA:   {{ ai_confianca }}
           ------------------------------------------------------------
-          EXPLICACAO:
-          {{ ai_explicacao }}
+          SOLUCAO:
+          {{ ai_solucao }}
+          ------------------------------------------------------------
+          COMANDO:
+          {{ ai_comando }}
+          ------------------------------------------------------------
+          PREVENCAO:
+          {{ ai_prevencao }}
 
-    # ============================================================
-    # 5. SALVAR RELATORIO
-    # ============================================================
     - name: Salvar relatorio
       ansible.builtin.copy:
         content: |
-          === AIOps Report ===
-          Data: {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -Iseconds')) }}
-          Alerta: {{ event_alert_name }}
-          Namespace: {{ event_namespace }}
-          Pod: {{ event_pod | default('N/A') }}
-          Severidade: {{ event_severity }}
-          Deployment: {{ parent_deployment | default('N/A') }}
-          IA disponivel: {{ llm_available }}
+          ============================================================
+          AIOps Report - {{ event_alert_name }}
+          ============================================================
+          Data:        {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -Iseconds')) }}
+          Alerta:      {{ event_alert_name }}
+          Namespace:   {{ event_namespace }}
+          Pod:         {{ event_pod | default('N/A') }}
+          Severidade:  {{ event_severity }}
+          Deployment:  {{ parent_deployment | default('N/A') }}
+          IA usada:    {{ llm_available }}
 
-          === Diagnostico ===
-          Causa Raiz: {{ ai_causa_raiz }}
-          Confianca: {{ ai_confianca }}
-          Risco: {{ ai_risco }}
+          ------------------------------------------------------------
+          CAUSA RAIZ
+          ------------------------------------------------------------
+          {{ ai_causa_raiz }}
 
-          === Explicacao ===
-          {{ ai_explicacao }}
+          ------------------------------------------------------------
+          SOLUCAO
+          ------------------------------------------------------------
+          {{ ai_solucao }}
 
-          === Acao ===
-          {{ ai_acao }}
+          ------------------------------------------------------------
+          COMANDO PARA EXECUTAR
+          ------------------------------------------------------------
+          {{ ai_comando }}
+
+          ------------------------------------------------------------
+          PREVENCAO
+          ------------------------------------------------------------
+          {{ ai_prevencao }}
+          ============================================================
         dest: "{{ report_dir }}/aiops_{{ event_alert_name | replace(' ', '_') | regex_replace('[^a-zA-Z0-9_]', '') }}_{{ event_namespace }}_{{ ansible_date_time.epoch | default(lookup('pipe', 'date +%s')) }}.txt"
-
-    # ============================================================
-    # 6. REMEDIACAO AUTOMATICA (critical)
-    # ============================================================
-    - name: Remediacao automatica
-      block:
-        - name: Rollout restart deployment
-          kubernetes.core.k8s:
-            state: patched
-            api_version: apps/v1
-            kind: Deployment
-            name: "{{ parent_deployment }}"
-            namespace: "{{ event_namespace }}"
-            definition:
-              spec:
-                template:
-                  metadata:
-                    annotations:
-                      kubectl.kubernetes.io/restartedAt: "{{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -Iseconds')) }}"
-          when: parent_deployment | default('') | length > 0 and parent_deployment != 'N/A'
-
-        - name: Aguardar rollout
-          kubernetes.core.k8s_info:
-            api_version: apps/v1
-            kind: Deployment
-            name: "{{ parent_deployment }}"
-            namespace: "{{ event_namespace }}"
-          register: deploy_status
-          until: deploy_status.resources[0].status.readyReplicas | default(0) == deploy_status.resources[0].spec.replicas | default(1)
-          retries: 12
-          delay: 10
-          when: parent_deployment | default('') | length > 0 and parent_deployment != 'N/A'
-
-        - name: Deletar pod
-          kubernetes.core.k8s:
-            state: absent
-            api_version: v1
-            kind: Pod
-            name: "{{ event_pod }}"
-            namespace: "{{ event_namespace }}"
-          when: parent_deployment | default('') | length == 0 or parent_deployment == 'N/A'
-
-        - name: Notificar
-          ansible.builtin.debug:
-            msg: "✅ Remediacao executada para {{ event_alert_name }} em {{ event_namespace }}"
-      when: event_severity == "critical"

@@ -142,11 +142,11 @@
 
 
           --- dnf update --security ---
-          SUCESSO
-          stdout:
+          Resultado:
+
           {{ dnf_result.stdout | default('N/A') }}
 
-          OBS: Favor realizar o patch scan na ferramenta do EndPoint para validar que a vulnerabilidade foi corrigida.
+          OBS: Favor realizar o patch scan na ferramenta do EndPoint Central para validar que a vulnerabilidade foi corrigida.
       when: criticos_detectados | length == 0
 
     - name: "[Ticket {{ ticket_id }}] Adicionar follow-up de SUCESSO no GLPI"

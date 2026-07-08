@@ -1,0 +1,60 @@
+---
+# ═══════════════════════════════════════════════════════════
+# JOB 3: Le os resultados do Job 2, adiciona follow-up e
+# fecha os tickets no GLPI (apenas os que tiveram sucesso).
+# ═══════════════════════════════════════════════════════════
+
+- name: "Setup — definir path"
+  ansible.builtin.set_fact:
+    _workflow_id: "{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}"
+    _resultados_file: "/tmp/glpi_resultados_{{ _workflow_id }}.json"
+
+- name: "Ler resultados do Job 2"
+  ansible.builtin.slurp:
+    src: "{{ _resultados_file }}"
+  register: _slurp
+
+- name: "Parsear JSON de resultados"
+  ansible.builtin.set_fact:
+    _resultados: "{{ (_slurp.content | b64decode | from_json) }}"
+
+- name: "Filtrar apenas os que tiveram sucesso"
+  ansible.builtin.set_fact:
+    _resultados_ok: "{{ _resultados | selectattr('sucesso', 'equalto', true) | list }}"
+
+- name: "Debug — tickets a fechar"
+  ansible.builtin.debug:
+    msg: "Tickets com sucesso: {{ _resultados_ok | length }} / {{ _resultados | length }}"
+
+# ── GLPI SESSAO ──
+- name: "GLPI | Iniciar sessao"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/initSession"
+    method: GET
+    headers:
+      Authorization: "Basic {{ (glpi_user + ':' + glpi_pass) | b64encode }}"
+    validate_certs: false
+    status_code: 200
+  register: glpi_session
+
+- name: "GLPI | Guardar token"
+  ansible.builtin.set_fact:
+    glpi_session_token: "{{ glpi_session.json.session_token }}"
+
+# ── FECHAR TICKETS ──
+- name: "GLPI | Fechar tickets processados"
+  ansible.builtin.include_tasks: fechar_single.yml
+  loop: "{{ _resultados_ok }}"
+  loop_control:
+    loop_var: ticket
+  when: _resultados_ok | length > 0
+
+- name: "GLPI | Encerrar sessao"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/killSession"
+    method: GET
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+    validate_certs: false
+    status_code: 200
+  ignore_errors: true

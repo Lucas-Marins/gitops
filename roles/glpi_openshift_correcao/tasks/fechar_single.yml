@@ -1,0 +1,42 @@
+---
+# Fecha UM ticket no GLPI: follow-up + fechamento
+
+- name: "[Ticket {{ ticket.id }}] Setup"
+  ansible.builtin.set_fact:
+    ticket_id: "{{ ticket.id }}"
+    vm_name: "{{ ticket.vm_name }}"
+    vm_ip: "{{ ticket.vm_ip }}"
+    snapshot_name: "{{ ticket.snapshot_name }}"
+    patch_report: "{{ ticket.relatorio }}"
+
+- name: "[Ticket {{ ticket_id }}] Adicionar follow-up de SUCESSO"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/Ticket/{{ ticket_id }}/TicketFollowup"
+    method: POST
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+      Content-Type: "application/json"
+    body:
+      input:
+        tickets_id: "{{ ticket_id | int }}"
+        content: "{{ patch_report }}"
+        is_private: 0
+    body_format: json
+    validate_certs: false
+    status_code: [201, 200]
+
+- name: "[Ticket {{ ticket_id }}] Fechar chamado"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/Ticket/{{ ticket_id }}"
+    method: PUT
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+      Content-Type: "application/json"
+    body:
+      input:
+        status: 6
+        solutiontypes_id: 1
+        solution: "Correcao aplicada automaticamente. Snapshot: {{ snapshot_name }}. Reboot pendente (producao)."
+    body_format: json
+    validate_certs: false
+    status_code: [200]

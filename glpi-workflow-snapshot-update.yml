@@ -1,0 +1,7 @@
+---
+- name: "GLPI Workflow | Job 2 — Snapshot e Update (apos aprovacao)"
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: glpi_openshift_correcao
+      tasks_from: snapshot_e_update.yml

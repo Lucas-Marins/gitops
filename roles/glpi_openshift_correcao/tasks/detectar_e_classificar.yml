@@ -1,0 +1,160 @@
+---
+# ═══════════════════════════════════════════════════════════
+# JOB 1: Busca tickets, detecta pacotes criticos, processa os
+# SEGUROS imediatamente, salva os CRITICOS para aprovacao.
+# ═══════════════════════════════════════════════════════════
+
+- name: "GLPI | Iniciar sessao"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/initSession"
+    method: GET
+    headers:
+      Authorization: "Basic {{ (glpi_user + ':' + glpi_pass) | b64encode }}"
+    validate_certs: false
+    status_code: 200
+  register: glpi_session
+
+- name: "GLPI | Guardar token"
+  ansible.builtin.set_fact:
+    glpi_session_token: "{{ glpi_session.json.session_token }}"
+
+# ── 1. LISTAR GRUPOS ──
+- name: "GLPI | Listar grupos para achar ID pelo nome"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/Group?range=0-999"
+    method: GET
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _all_groups
+
+- name: "GLPI | Extrair ID do grupo pelo nome"
+  ansible.builtin.set_fact:
+    glpi_group_id: "{{ (_all_groups.json | selectattr('name', 'equalto', glpi_group_name) | first | default({})).id | default('') }}"
+
+- name: "GLPI | Abortar se grupo nao encontrado"
+  ansible.builtin.fail:
+    msg: "Grupo '{{ glpi_group_name }}' nao encontrado. Existentes: {{ _all_groups.json | map(attribute='name') | list }}"
+  when: glpi_group_id | length == 0
+
+# ── 2. BUSCAR Group_Ticket PAGINADO ──
+- name: "GLPI | Inicializar paginacao"
+  ansible.builtin.set_fact:
+    _gt_page_start: 0
+    _gt_all_results: []
+    _gt_has_more: true
+
+- name: "GLPI | Buscar Group_Ticket do grupo (paginado)"
+  ansible.builtin.include_tasks: buscar_group_ticket_pagina.yml
+  when: _gt_has_more | bool
+
+# ── 3. EXTRAIR IDs ──
+- name: "GLPI | Extrair IDs dos tickets"
+  ansible.builtin.set_fact:
+    _ticket_ids: "{{ _gt_all_results | map(attribute='tickets_id') | list | unique }}"
+
+# ── 4. BUSCAR DETALHES ──
+- name: "GLPI | Buscar detalhes dos tickets"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/Ticket/{{ item }}?expand_dropdowns=true"
+    method: GET
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _ticket_details
+  loop: "{{ _ticket_ids }}"
+  loop_control:
+    label: "Ticket ID {{ item }}"
+
+# ── 5. NORMALIZAR ──
+- name: "GLPI | Normalizar tickets"
+  ansible.builtin.set_fact:
+    _ticket_item:
+      id: "{{ item.json.id }}"
+      name: "{{ item.json.name }}"
+      status: "{{ item.json.status | default('') }}"
+  loop: "{{ _ticket_details.results }}"
+  register: _ticket_items
+
+- name: "GLPI | Consolidar tickets"
+  ansible.builtin.set_fact:
+    glpi_tickets: "{{ _ticket_items.results | map(attribute='ansible_facts._ticket_item') | list }}"
+
+# ── 6. FILTRAR STATUS 2 (Em atendimento) ──
+- name: "GLPI | Filtrar tickets em atendimento (status 2)"
+  ansible.builtin.set_fact:
+    glpi_tickets_processar: "{{ glpi_tickets | selectattr('status', 'defined') | selectattr('status', 'equalto', '2') | list }}"
+
+- name: "GLPI | Debug — tickets a processar"
+  ansible.builtin.debug:
+    msg: "Total em atendimento: {{ glpi_tickets_processar | length }} | IDs: {{ glpi_tickets_processar | map(attribute='id') | list }}"
+
+- name: "GLPI | Abortar se nenhum ticket em processo"
+  ansible.builtin.fail:
+    msg: "Nenhum ticket com status 'Em atendimento' (2) encontrado no grupo {{ glpi_group_name }}."
+  when: glpi_tickets_processar | length == 0
+
+# ── 7. VERIFICAR PACOTES POR TICKET ──
+- name: "GLPI | Inicializar listas de classificacao"
+  ansible.builtin.set_fact:
+    _tickets_seguros: []
+    _tickets_criticos: []
+
+- name: "GLPI | Verificar pacotes criticos por ticket"
+  ansible.builtin.include_tasks: verificar_pacotes_por_ticket.yml
+  loop: "{{ glpi_tickets_processar }}"
+  loop_control:
+    loop_var: ticket
+
+# ── 8. PROCESSAR OS SEGUROS IMEDIATAMENTE (reaproveita seu codigo) ──
+- name: "GLPI | Processar tickets SEGUROS (sem criticos)"
+  ansible.builtin.include_tasks: processar_ticket.yml
+  loop: "{{ _tickets_seguros }}"
+  loop_control:
+    loop_var: ticket
+  when: _tickets_seguros | length > 0
+
+# ── 9. SALVAR CRITICOS EM ARQUIVO JSON ──
+- name: "GLPI | Definir ID do workflow"
+  ansible.builtin.set_fact:
+    _workflow_id: "{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}"
+
+- name: "GLPI | Salvar tickets criticos em JSON"
+  ansible.builtin.copy:
+    dest: "/tmp/glpi_criticos_{{ _workflow_id }}.json"
+    content: "{{ _tickets_criticos | to_nice_json }}"
+  when: _tickets_criticos | length > 0
+
+# ── 10. NOTIFICAR TEAMS SE HOUVER CRITICOS ──
+- name: "GLPI | Notificar Teams — aguardando aprovacao no AAP"
+  ansible.builtin.uri:
+    url: "{{ teams_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      text: |
+        🔒 **Aprovacao necessaria — {{ _tickets_criticos | length }} ticket(s) com pacotes criticos**
+        {% for t in _tickets_criticos %}
+        • Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }}) | Pacotes: {{ t.criticos | join(', ') }}
+        {% endfor %}
+
+        O workflow esta **PAUSADO** no AAP. Clique para aprovar:
+        {{ aap_base_url }}/controller/#/jobs/workflow/{{ tower_workflow_job_id }}/details
+    status_code: [200, 202]
+  when:
+    - _tickets_criticos | length > 0
+    - teams_webhook_url is defined
+  ignore_errors: true
+
+# ── 11. ENCERRAR SESSAO GLPI ──
+- name: "GLPI | Encerrar sessao"
+  ansible.builtin.uri:
+    url: "{{ glpi_url }}/apirest.php/killSession"
+    method: GET
+    headers:
+      Session-Token: "{{ glpi_session_token }}"
+    validate_certs: false
+    status_code: 200
+  ignore_errors: true

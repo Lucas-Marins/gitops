@@ -1,0 +1,37 @@
+---
+# Loop task: extrai VM/IP, lista updates, classifica como seguro ou critico
+
+- name: "[Ticket {{ ticket.id }}] Extrair nome da VM e IP do titulo"
+  ansible.builtin.set_fact:
+    _vm_name: "{{ ticket.name | regex_search('(?i)nome[:\\s]+([A-Za-z0-9._-]+)', '\\1') | first | default('') | trim }}"
+    _vm_ip: "{{ ticket.name | regex_search('(?i)IP[:\\s]+([0-9.]+)', '\\1') | first | default('') | trim }}"
+
+- name: "[Ticket {{ ticket.id }}] Pular se VM/IP nao identificados"
+  ansible.builtin.debug:
+    msg: "Ticket {{ ticket.id }}: VM/IP nao extraido. Pulando."
+  when: _vm_name | length == 0 or _vm_ip | length == 0
+
+- name: "[Ticket {{ ticket.id }}] Listar updates de seguranca"
+  ansible.builtin.shell: |
+    dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
+  delegate_to: "{{ _vm_ip }}"
+  become: "{{ vm_become }}"
+  become_user: "{{ vm_become_user }}"
+  register: _pacotes_pendentes
+  changed_when: false
+  when: _vm_name | length > 0 and _vm_ip | length > 0
+
+- name: "[Ticket {{ ticket.id }}] Verificar se ha pacotes criticos"
+  ansible.builtin.set_fact:
+    _criticos: "{{ _pacotes_pendentes.stdout_lines | default([]) | select('search', pacotes_criticos_regex) | list | unique }}"
+  when: _vm_name | length > 0 and _vm_ip | length > 0
+
+- name: "[Ticket {{ ticket.id }}] Classificar como CRITICO"
+  ansible.builtin.set_fact:
+    _tickets_criticos: "{{ _tickets_criticos + [{ 'id': ticket.id, 'name': ticket.name, 'vm_name': _vm_name, 'vm_ip': _vm_ip, 'criticos': _criticos, 'pacotes_todos': _pacotes_pendentes.stdout_lines | default([]) }] }}"
+  when: _vm_name | length > 0 and _vm_ip | length > 0 and _criticos | length > 0
+
+- name: "[Ticket {{ ticket.id }}] Classificar como SEGURO"
+  ansible.builtin.set_fact:
+    _tickets_seguros: "{{ _tickets_seguros + [ticket] }}"
+  when: _vm_name | length > 0 and _vm_ip | length > 0 and _criticos | length == 0

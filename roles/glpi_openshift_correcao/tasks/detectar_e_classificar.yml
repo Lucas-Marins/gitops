@@ -1,7 +1,8 @@
 ---
 # ═══════════════════════════════════════════════════════════
-# JOB 1: Busca tickets, detecta pacotes criticos, processa os
-# SEGUROS imediatamente, salva os CRITICOS para aprovacao.
+# JOB 1: Busca tickets, lista TODOS os pacotes,
+# envia card no Teams com detalhes (criticos em destaque),
+# salva JSON para o Job 2 executar apos aprovacao.
 # ═══════════════════════════════════════════════════════════
 
 - name: "GLPI | Iniciar sessao"
@@ -97,38 +98,29 @@
   when: glpi_tickets_processar | length == 0
 
 # ── 7. VERIFICAR PACOTES POR TICKET ──
-- name: "GLPI | Inicializar listas de classificacao"
+- name: "GLPI | Inicializar lista de aprovacao"
   ansible.builtin.set_fact:
-    _tickets_seguros: []
-    _tickets_criticos: []
+    _tickets_para_aprovacao: []
 
-- name: "GLPI | Verificar pacotes criticos por ticket"
+- name: "GLPI | Verificar pacotes por ticket"
   ansible.builtin.include_tasks: verificar_pacotes_por_ticket.yml
   loop: "{{ glpi_tickets_processar }}"
   loop_control:
     loop_var: ticket
 
-# ── 8. PROCESSAR OS SEGUROS IMEDIATAMENTE ──
-- name: "GLPI | Processar tickets SEGUROS (sem criticos)"
-  ansible.builtin.include_tasks: processar_ticket.yml
-  loop: "{{ _tickets_seguros }}"
-  loop_control:
-    loop_var: ticket
-  when: _tickets_seguros | length > 0
-
-# ── 9. SALVAR CRITICOS EM ARQUIVO JSON ──
+# ── 8. SALVAR TODOS EM JSON PARA O JOB 2 ──
 - name: "GLPI | Definir ID do workflow"
   ansible.builtin.set_fact:
     _workflow_id: "{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}"
 
-- name: "GLPI | Salvar tickets criticos em JSON"
+- name: "GLPI | Salvar tickets para aprovacao em JSON"
   ansible.builtin.copy:
-    dest: "/tmp/glpi_criticos_{{ _workflow_id }}.json"
-    content: "{{ _tickets_criticos | to_nice_json }}"
-  when: _tickets_criticos | length > 0
+    dest: "/tmp/glpi_aprovacao_{{ _workflow_id }}.json"
+    content: "{{ _tickets_para_aprovacao | to_nice_json }}"
+  when: _tickets_para_aprovacao | length > 0
 
-# ── 10. NOTIFICAR POWER AUTOMATE / TEAMS ──
-- name: "GLPI | Notificar Teams via Power Automate — aguardando aprovacao"
+# ── 9. NOTIFICAR TEAMS VIA POWER AUTOMATE ──
+- name: "GLPI | Notificar Teams — aguardando aprovacao"
   ansible.builtin.uri:
     url: "{{ teams_webhook_url }}"
     method: POST
@@ -138,28 +130,39 @@
       version: "1.2"
       body:
         - type: "TextBlock"
-          text: "🔒 Aprovacao necessaria — {{ _tickets_criticos | length }} ticket(s) com pacotes criticos"
+          text: "🔒 Aprovacao necessaria — {{ _tickets_para_aprovacao | length }} ticket(s) de correcao"
           size: "Large"
           weight: "Bolder"
           color: "Attention"
         - type: "FactSet"
           facts:
-            - title: "Workflow ID:"
+            - title: "Workflow:"
               value: "{{ _workflow_id }}"
-            - title: "Total criticos:"
-              value: "{{ _tickets_criticos | length }}"
+            - title: "Total tickets:"
+              value: "{{ _tickets_para_aprovacao | length }}"
         - type: "TextBlock"
-          text: "Detalhes dos tickets:"
+          text: "Detalhes dos tickets para aprovacao:"
           weight: "Bolder"
           size: "Medium"
         - type: "TextBlock"
           text: |
-            {% for t in _tickets_criticos %}
-            • Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }}) | Pacotes: {{ t.criticos | join(', ') }}
+            {% for t in _tickets_para_aprovacao %}
+            {% if t.tem_criticos %}
+            ⚠️ **CRITICO** — Ticket #{{ t.id }}
+            VM: {{ t.vm_name }} ({{ t.vm_ip }})
+            🔴 Pacotes CRITICOS: {{ t.criticos | join(', ') }}
+            📦 Demais pacotes: {{ t.nao_criticos | join(', ') | default('nenhum') }}
+            ---
+            {% else %}
+            ✅ Ticket #{{ t.id }}
+            VM: {{ t.vm_name }} ({{ t.vm_ip }})
+            📦 Pacotes: {{ t.todos_pacotes | join(', ') | default('nenhum') }}
+            ---
+            {% endif %}
             {% endfor %}
           wrap: true
         - type: "TextBlock"
-          text: "O workflow esta PAUSADO no AAP aguardando sua aprovacao."
+          text: "O workflow esta PAUSADO no AAP. Clique para aprovar ou rejeitar."
           wrap: true
           isSubtle: true
           color: "Warning"
@@ -169,12 +172,12 @@
           url: "{{ aap_base_url }}/controller/#/jobs/workflow/{{ tower_workflow_job_id }}/details"
     status_code: [200, 202]
   when:
-    - _tickets_criticos | length > 0
+    - _tickets_para_aprovacao | length > 0
     - teams_webhook_url is defined
     - teams_webhook_url | length > 0
   ignore_errors: true
 
-# ── 11. ENCERRAR SESSAO GLPI ──
+# ── 10. ENCERRAR SESSAO GLPI ──
 - name: "GLPI | Encerrar sessao"
   ansible.builtin.uri:
     url: "{{ glpi_url }}/apirest.php/killSession"

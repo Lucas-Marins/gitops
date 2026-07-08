@@ -1,5 +1,5 @@
 ---
-# Loop task: extrai VM/IP, lista updates, classifica como seguro ou critico
+# Loop task: extrai VM/IP, lista updates, classifica pacotes
 
 - name: "[Ticket {{ ticket.id }}] Extrair nome da VM e IP do titulo"
   ansible.builtin.set_fact:
@@ -11,7 +11,7 @@
     msg: "Ticket {{ ticket.id }}: VM/IP nao extraido. Pulando."
   when: _vm_name | length == 0 or _vm_ip | length == 0
 
-- name: "[Ticket {{ ticket.id }}] Listar updates de seguranca"
+- name: "[Ticket {{ ticket.id }}] Listar TODOS os updates de seguranca"
   ansible.builtin.shell: |
     dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
   delegate_to: "{{ _vm_ip }}"
@@ -21,17 +21,26 @@
   changed_when: false
   when: _vm_name | length > 0 and _vm_ip | length > 0
 
-- name: "[Ticket {{ ticket.id }}] Verificar se ha pacotes criticos"
+- name: "[Ticket {{ ticket.id }}] Separar pacotes criticos"
   ansible.builtin.set_fact:
     _criticos: "{{ _pacotes_pendentes.stdout_lines | default([]) | select('search', pacotes_criticos_regex) | list | unique }}"
+    _nao_criticos: "{{ _pacotes_pendentes.stdout_lines | default([]) | reject('search', pacotes_criticos_regex) | list | unique }}"
   when: _vm_name | length > 0 and _vm_ip | length > 0
 
-- name: "[Ticket {{ ticket.id }}] Classificar como CRITICO"
+- name: "[Ticket {{ ticket.id }}] Montar ticket item"
   ansible.builtin.set_fact:
-    _tickets_criticos: "{{ _tickets_criticos + [{ 'id': ticket.id, 'name': ticket.name, 'vm_name': _vm_name, 'vm_ip': _vm_ip, 'criticos': _criticos, 'pacotes_todos': _pacotes_pendentes.stdout_lines | default([]) }] }}"
-  when: _vm_name | length > 0 and _vm_ip | length > 0 and _criticos | length > 0
+    _ticket_item_dict:
+      id: "{{ ticket.id }}"
+      name: "{{ ticket.name }}"
+      vm_name: "{{ _vm_name }}"
+      vm_ip: "{{ _vm_ip }}"
+      criticos: "{{ _criticos }}"
+      nao_criticos: "{{ _nao_criticos }}"
+      todos_pacotes: "{{ _pacotes_pendentes.stdout_lines | default([]) }}"
+      tem_criticos: "{{ _criticos | length > 0 }}"
+  when: _vm_name | length > 0 and _vm_ip | length > 0
 
-- name: "[Ticket {{ ticket.id }}] Classificar como SEGURO"
+- name: "[Ticket {{ ticket.id }}] Acumular ticket para aprovacao"
   ansible.builtin.set_fact:
-    _tickets_seguros: "{{ _tickets_seguros + [ticket] }}"
-  when: _vm_name | length > 0 and _vm_ip | length > 0 and _criticos | length == 0
+    _tickets_para_aprovacao: "{{ _tickets_para_aprovacao + [_ticket_item_dict] }}"
+  when: _vm_name | length > 0 and _vm_ip | length > 0

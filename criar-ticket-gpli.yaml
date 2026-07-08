@@ -1,5 +1,5 @@
 ---
-- name: Gerar massa de tickets no GLPI (v8 - Indentacao corrigida)
+- name: Gerar massa de tickets no GLPI (v12 - Tudo em um unico loop, sem script externo)
   hosts: localhost
   gather_facts: yes
   vars:
@@ -29,172 +29,91 @@
       ansible.builtin.set_fact:
         glpi_session_token: "{{ session.json.session_token }}"
 
-    - name: Gerar lista de tickets (Python inline)
-      ansible.builtin.command:
-        cmd: |
-          python3 -c "
-          import random, json, datetime
+    - name: Criar tickets e atrelar grupo em um unico loop
+      block:
+        - name: Gerar dados do ticket
+          ansible.builtin.set_fact:
+            ticket_data: "{{ lookup('pipe', 'python3 -c \"'
+              + 'import random, datetime;'
+              + 'now_str = datetime.datetime.now().isoformat();'
+              + 'srvs = ['
+              + '  {\\'nome\\': \\'web-prod-01\\', \\'ip\\': \\'10.132.0.41\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'web-prod-02\\', \\'ip\\': \\'10.132.0.42\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'app-hml-01\\',  \\'ip\\': \\'10.132.1.15\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'db-prd-01\\',   \\'ip\\': \\'10.132.2.10\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'api-prod-03\\', \\'ip\\': \\'10.132.0.55\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'cache-redis-01\\', \\'ip\\': \\'10.132.3.20\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'lb-nginx-01\\', \\'ip\\': \\'10.132.0.10\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'k8s-master-01\\', \\'ip\\': \\'10.132.4.5\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'jenkins-01\\', \\'ip\\': \\'10.132.1.30\\', \\'resp\\': \\'VIBE\\'},'
+              + '  {\\'nome\\': \\'monitor-01\\', \\'ip\\': \\'10.132.5.8\\', \\'resp\\': \\'VIBE\\'}'
+              + '];'
+              + 'cves = [\\'CVE-2024-1234\\',\\'CVE-2024-5678\\',\\'CVE-2023-9999\\',\\'CVE-2024-1111\\',\\'CVE-2024-2222\\',\\'CVE-2023-7777\\',\\'CVE-2024-3333\\',\\'CVE-2024-4444\\',\\'CVE-2023-5555\\',\\'CVE-2024-8888\\'];'
+              + 'sevs = [\\'CRITICA\\',\\'ALTA\\',\\'MEDIA\\',\\'BAIXA\\'];'
+              + 'nomes = [\\'Falha de conectividade\\',\\'Solicitacao de acesso\\',\\'Lentidao no servidor\\',\\'Erro relatorio\\',\\'Nova VM\\',\\'Falha backup\\',\\'Permissao negada\\',\\'Atualizacao software\\',\\'Troca senha servico\\',\\'Firewall\\',\\'Incidente seguranca\\',\\'Licenca\\',\\'Impressora\\',\\'Email\\',\\'VPN\\',\\'App fora\\',\\'Disco cheio\\',\\'Memoria\\',\\'Certificado SSL\\',\\'API falhando\\'];'
+              + 'descs = [\\'Usuario reportou instabilidade.\\',\\'Avaliacao tecnica urgente.\\',\\'Chamado via monitoramento.\\',\\'Solicitacao NOC.\\',\\'Rotina de checks.\\',\\'Demanda recorrente.\\',\\'Falha em producao.\\',\\'Provisionamento recurso.\\',\\'Threshold ultrapassado.\\',\\'Anomalia em logs.\\'];'
+              + 'is_vuln = (' + (item | string) + ' % ' + (vuln_ratio | string) + ' == 0);'
+              + 'has_ansible = random.choice([True, False]);'
+              + 'srv = random.choice(srvs);'
+              + 'cvss = str(random.randint(1,9)) + \\'.\\' + str(random.randint(0,9));'
+              + 'if is_vuln:'
+              + '  name = \\'Correcao de Vulnerabilidades Identificadas em servidor - Nome: \\' + srv[\\'nome\\'] + \\' - IP: \\' + srv[\\'ip\\'] + \\' - Responsavel: \\' + srv[\\'resp\\'];'
+              + '  content = \\'<p><strong>VULNERABILIDADE DETECTADA</strong><br>CVE: \\' + random.choice(cves) + \\'<br>Servidor: \\' + srv[\\'nome\\'] + \\'<br>IP: \\' + srv[\\'ip\\'] + \\'<br>Responsavel: \\' + srv[\\'resp\\'] + \\'<br>Severidade: \\' + random.choice(sevs) + \\'<br>CVSS Score: \\' + cvss + \\'<br>Data varredura: \\' + now_str + \\'<br>Recomendacao: Aplicar patch imediatamente.</p>\\';'
+              + '  urgency = 5; impact = 5; priority = 5; cat = 7; status = 2;'
+              + 'else:'
+              + '  name = random.choice(nomes) + \\' - Ticket #' + (item | string) + '\\';'
+              + '  content = \\'<p>\\' + random.choice(descs) + \\' Ticket gerado em stress test.</p>\\';'
+              + '  urgency = random.randint(2, 4); impact = random.randint(2, 4); priority = random.randint(1, 4); cat = random.randint(1, 9); status = 1;'
+              + 'import json;'
+              + 'print(json.dumps({\\'name\\': name, \\'content\\': content, \\'urgency\\': urgency, \\'impact\\': impact, \\'priority\\': priority, \\'cat\\': cat, \\'status\\': status, \\'is_vuln\\': is_vuln}))'
+              + '\"') | from_json }}"
 
-          count = {{ ticket_count }}
-          ratio = {{ vuln_ratio }}
-          now_str = datetime.datetime.now().isoformat()
+        - name: Criar ticket no GLPI
+          ansible.builtin.uri:
+            url: "{{ glpi_url }}/apirest.php/Ticket"
+            method: POST
+            validate_certs: no
+            headers:
+              Session-Token: "{{ glpi_session_token }}"
+              Content-Type: "application/json"
+            body:
+              input:
+                name: "{{ ticket_data.name }}"
+                content: "{{ ticket_data.content }}"
+                type: 1
+                status: "{{ ticket_data.status }}"
+                urgency: "{{ ticket_data.urgency }}"
+                impact: "{{ ticket_data.impact }}"
+                priority: "{{ ticket_data.priority }}"
+                requesttypes_id: 6
+                itilcategories_id: "{{ ticket_data.cat }}"
+            body_format: json
+            status_code: 201
+            timeout: 30
+          register: created_ticket
+          ignore_errors: yes
 
-          srvs = [
-            {'nome': 'web-prod-01', 'ip': '10.132.0.41', 'resp': 'VIBE'},
-            {'nome': 'web-prod-02', 'ip': '10.132.0.42', 'resp': 'VIBE'},
-            {'nome': 'app-hml-01',  'ip': '10.132.1.15', 'resp': 'VIBE'},
-            {'nome': 'db-prd-01',   'ip': '10.132.2.10', 'resp': 'VIBE'},
-            {'nome': 'api-prod-03', 'ip': '10.132.0.55', 'resp': 'VIBE'},
-            {'nome': 'cache-redis-01', 'ip': '10.132.3.20', 'resp': 'VIBE'},
-            {'nome': 'lb-nginx-01', 'ip': '10.132.0.10', 'resp': 'VIBE'},
-            {'nome': 'k8s-master-01', 'ip': '10.132.4.5', 'resp': 'VIBE'},
-            {'nome': 'jenkins-01', 'ip': '10.132.1.30', 'resp': 'VIBE'},
-            {'nome': 'monitor-01', 'ip': '10.132.5.8', 'resp': 'VIBE'}
-          ]
+        - name: Atrelar grupo ansible ao ticket (se for vulnerabilidade)
+          ansible.builtin.uri:
+            url: "{{ glpi_url }}/apirest.php/Group_Ticket"
+            method: POST
+            validate_certs: no
+            headers:
+              Session-Token: "{{ glpi_session_token }}"
+              Content-Type: "application/json"
+            body:
+              input:
+                tickets_id: "{{ created_ticket.json.id }}"
+                groups_id: 1
+                type: 2
+            body_format: json
+            status_code: 201
+          when:
+            - created_ticket.json.id is defined
+            - ticket_data.is_vuln | bool
+          register: group_attached
 
-          cves = ['CVE-2024-1234','CVE-2024-5678','CVE-2023-9999','CVE-2024-1111',
-                  'CVE-2024-2222','CVE-2023-7777','CVE-2024-3333','CVE-2024-4444',
-                  'CVE-2023-5555','CVE-2024-8888']
-          sevs = ['CRITICA','ALTA','MEDIA','BAIXA']
-          nomes = ['Falha de conectividade','Solicitacao de acesso','Lentidao no servidor',
-                   'Erro relatorio','Nova VM','Falha backup','Permissao negada',
-                   'Atualizacao software','Troca senha servico','Firewall','Incidente seguranca',
-                   'Licenca','Impressora','Email','VPN','App fora','Disco cheio',
-                   'Memoria','Certificado SSL','API falhando']
-          descs = ['Usuario reportou instabilidade.','Avaliacao tecnica urgente.',
-                   'Chamado via monitoramento.','Solicitacao NOC.','Rotina de checks.',
-                   'Demanda recorrente.','Falha em producao.','Provisionamento recurso.',
-                   'Threshold ultrapassado.','Anomalia em logs.']
-
-          tickets = []
-          for i in range(1, count + 1):
-              is_vuln = (i % ratio == 0)
-              has_ansible = random.choice([True, False])
-              srv = random.choice(srvs)
-              cvss = str(random.randint(1,9)) + '.' + str(random.randint(0,9))
-
-              if is_vuln:
-                  name = ('Correcao de Vulnerabilidades Identificadas em servidor - Nome: '
-                          + srv['nome'] + ' - IP: ' + srv['ip'] + ' - Responsavel: ' + srv['resp'])
-                  content = ('<p><strong>VULNERABILIDADE DETECTADA</strong><br>'
-                             'CVE: ' + random.choice(cves) + '<br>'
-                             'Servidor: ' + srv['nome'] + '<br>'
-                             'IP: ' + srv['ip'] + '<br>'
-                             'Responsavel: ' + srv['resp'] + '<br>'
-                             'Severidade: ' + random.choice(sevs) + '<br>'
-                             'CVSS Score: ' + cvss + '<br>'
-                             'Data varredura: ' + now_str + '<br>'
-                             'Recomendacao: Aplicar patch imediatamente.</p>')
-                  urgency = 5
-                  impact = 5
-                  priority = 5
-                  cat = 7
-                  status = 2
-                  groups_id = [{'groups_id': 1}]
-              else:
-                  name = random.choice(nomes) + ' - Ticket #' + str(i)
-                  content = ('<p>' + random.choice(descs)
-                             + ' Ticket gerado em stress test.</p>')
-                  urgency = random.randint(2, 4)
-                  impact = random.randint(2, 4)
-                  priority = random.randint(1, 4)
-                  cat = random.randint(1, 9)
-                  status = 1
-                  groups_id = [{'groups_id': 1}] if has_ansible else []
-
-              tickets.append({
-                  'idx': i,
-                  'name': name,
-                  'content': content,
-                  'urgency': urgency,
-                  'impact': impact,
-                  'priority': priority,
-                  'cat': cat,
-                  'status': status,
-                  'groups_id': groups_id
-              })
-
-          print(json.dumps(tickets))
-          "
-      register: py_out
-      changed_when: false
-
-    - name: Parsear JSON
-      ansible.builtin.set_fact:
-        ticket_list: "{{ py_out.stdout | from_json }}"
-
-    - name: Criar tickets no GLPI
-      ansible.builtin.uri:
-        url: "{{ glpi_url }}/apirest.php/Ticket"
-        method: POST
-        validate_certs: no
-        headers:
-          Session-Token: "{{ glpi_session_token }}"
-          Content-Type: "application/json"
-        body:
-          input:
-            name: "{{ item.name }}"
-            content: "{{ item.content }}"
-            type: 1
-            status: "{{ item.status }}"
-            urgency: "{{ item.urgency }}"
-            impact: "{{ item.impact }}"
-            priority: "{{ item.priority }}"
-            requesttypes_id: 6
-            itilcategories_id: "{{ item.cat }}"
-            groups_id: "{{ item.groups_id }}"
-        body_format: json
-        status_code: 201
-        timeout: 30
-      loop: "{{ ticket_list }}"
+      loop: "{{ range(1, ticket_count + 1) | list }}"
       loop_control:
-        label: "Ticket {{ item.idx }} | status={{ item.status }} | groups={{ item.groups_id }}"
+        label: "Ticket {{ item }}"
       throttle: "{{ throttle_val }}"
-      register: ticket_results
-      ignore_errors: yes
-      retries: 2
-      delay: 1
-      until: ticket_results is succeeded
-
-    - name: Fallback resultados
-      ansible.builtin.set_fact:
-        all_results: "{{ ticket_results.results | default([]) }}"
-
-    - name: Estatisticas
-      ansible.builtin.set_fact:
-        total_ok: "{{ all_results | selectattr('status', 'defined') | selectattr('status', 'equalto', 201) | list | length }}"
-        total_fail: "{{ all_results | selectattr('failed', 'defined') | selectattr('failed', 'equalto', true) | list | length }}"
-        ticket_ids: "{{ all_results | selectattr('json.id', 'defined') | map(attribute='json.id') | list }}"
-
-    - name: Contar vuln e ansible
-      ansible.builtin.set_fact:
-        vuln_count: "{{ all_results | selectattr('json.id', 'defined') | selectattr('item.name', 'search', 'Vulnerabilidades') | list | length }}"
-        ansible_count: "{{ all_results | selectattr('json.id', 'defined') | selectattr('item.groups_id', 'defined') | selectattr('item.groups_id', 'search', 'groups_id') | list | length }}"
-
-    - name: Resumo
-      ansible.builtin.debug:
-        msg:
-          - "Total: {{ ticket_count }}"
-          - "Criados: {{ total_ok }}"
-          - "Falhas: {{ total_fail }}"
-          - "Vuln (assigned): {{ vuln_count }}"
-          - "Com grupo ansible: {{ ansible_count }}"
-
-    - name: Exportar stats
-      ansible.builtin.set_stats:
-        data:
-          glpi_total_criados: "{{ total_ok }}"
-          glpi_total_falhas: "{{ total_fail }}"
-          glpi_ticket_ids: "{{ ticket_ids }}"
-          glpi_vuln_count: "{{ vuln_count }}"
-          glpi_ansible_count: "{{ ansible_count }}"
-        per_host: no
-
-    - name: Encerrar sessao
-      ansible.builtin.uri:
-        url: "{{ glpi_url }}/apirest.php/killSession"
-        method: GET
-        validate_certs: no
-        headers:
-          Session-Token: "{{ glpi_session_token }}"
-      ignore_errors: yes

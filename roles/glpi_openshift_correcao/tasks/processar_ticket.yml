@@ -139,16 +139,14 @@
           === Correcao Automatica GLPI #{{ ticket_id }} ===
           VM: {{ vm_name }}
           IP: {{ vm_ip }}
-          Snapshot: {{ snapshot_name }}
-          URL: {{ ticket_url }}
+
 
           --- dnf update --security ---
-          RC: {{ dnf_result.rc }}
           SUCESSO
           stdout:
           {{ dnf_result.stdout | default('N/A') }}
 
-          OBS: Reboot NAO realizado. Servidor de producao — aguardar janela de manutencao supervisionada.
+          OBS: Favor realizar o patch scan na ferramenta do EndPoint para validar que a vulnerabilidade foi corrigida.
       when: criticos_detectados | length == 0
 
     - name: "[Ticket {{ ticket_id }}] Adicionar follow-up de SUCESSO no GLPI"

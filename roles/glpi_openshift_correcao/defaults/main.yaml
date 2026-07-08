@@ -1,8 +1,8 @@
 ---
 # GLPI
-glpi_url: ""
 glpi_user: "glpi"
-glpi_pass: ""
+glpi_pass: "glpi"
+glpi_url: "https://glpi-glpi.apps.cluster-48fnf.dynamic.redhatworkshops.io"
 glpi_search_filter: "Correção"
 
 # OpenShift

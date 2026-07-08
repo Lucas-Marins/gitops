@@ -235,18 +235,18 @@
 # ═══════════════════════════════════════════════════════════
 # 7. PROCESSAR
 # ═══════════════════════════════════════════════════════════
-- name: GLPI | Processar tickets em atendimento
-  ansible.builtin.include_tasks: processar_ticket.yml
-  loop: "{{ glpi_tickets_processar }}"
-  loop_control:
-    loop_var: ticket
+# - name: GLPI | Processar tickets em atendimento
+#   ansible.builtin.include_tasks: processar_ticket.yml
+#   loop: "{{ glpi_tickets_processar }}"
+#   loop_control:
+#     loop_var: ticket
 
-- name: GLPI | Encerrar sessao
-  ansible.builtin.uri:
-    url: "{{ glpi_url }}/apirest.php/killSession"
-    method: GET
-    headers:
-      Session-Token: "{{ glpi_session_token }}"
-    validate_certs: false
-    status_code: 200
-  ignore_errors: true
+# - name: GLPI | Encerrar sessao
+#   ansible.builtin.uri:
+#     url: "{{ glpi_url }}/apirest.php/killSession"
+#     method: GET
+#     headers:
+#       Session-Token: "{{ glpi_session_token }}"
+#     validate_certs: false
+#     status_code: 200
+#   ignore_errors: true

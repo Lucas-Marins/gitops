@@ -29,7 +29,7 @@
     # dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
     - name: "[Ticket {{ ticket_id }}] Listar pacotes de seguranca pendentes"
       ansible.builtin.shell: |
-        dnf list updates -q 2>/dev/null | awk 'NR>1 {print $1}'
+        dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
       delegate_to: "{{ vm_ip }}"
       become: "{{ vm_become }}"
       become_user: "{{ vm_become_user }}"
@@ -63,7 +63,7 @@
                   value: "{{ vm_name }} ({{ vm_ip }})"
                 - title: "Pacotes criticos:"
                   value: "{{ criticos_detectados | join(', ') }}"
-                - title: "Acao:"
+                - title: "Acão:"
                   value: "Update NAO aplicado. Requer janela de manutencao."
         status_code: [200, 202]
       when:

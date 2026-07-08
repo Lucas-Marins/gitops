@@ -26,9 +26,10 @@
   block:
 
     # ── 1. VERIFICACAO PREVIA — LISTAR UPDATES DE SEGURANCA ──
+     #dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
     - name: "[Ticket {{ ticket_id }}] Listar pacotes de seguranca pendentes"
       ansible.builtin.shell: |
-        dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
+        dnf list updates -q 2>/dev/null | awk 'NR>1 {print $1}'
       delegate_to: "{{ vm_ip }}"
       become: "{{ vm_become }}"
       become_user: "{{ vm_become_user }}"

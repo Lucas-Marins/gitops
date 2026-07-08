@@ -60,7 +60,7 @@ spec:
     spec:
       containers:
       - name: glpi
-        image: docker.io/glpi/glpi:10.0.25
+        image: docker.io/glpi/glpi:10.0.20
         env:
         - name: GLPI_DB_HOST
           value: glpi-mariadb
@@ -96,11 +96,11 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   labels:
-    app: webapp-color
-  name: webapp-color
+    app: glpi
+  name: glpi
 spec:
   to:
     kind: Service
-    name: webapp-color
+    name: glpi
   tls:
     termination: edge

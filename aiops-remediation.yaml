@@ -4,16 +4,25 @@
   gather_facts: false
   vars:
     llm_endpoint: "https://ollama-route-aiops-llm.apps.cluster-dlpnc.dynamic.redhatworkshops.io/v1/chat/completions"
-    llm_model: "mistral:7b"
+    llm_model: "phi3:mini"
+    report_dir: "/tmp/aiops_reports"
 
   tasks:
-    # 1. Validar variaveis do evento
-    - name: Validar variaveis
+    # ============================================================
+    # 1. VALIDACAO
+    # ============================================================
+    - name: Validar variaveis do evento
       ansible.builtin.fail:
         msg: "event_alert_name ou event_namespace nao definidos"
       when: event_alert_name is not defined or event_namespace is not defined
 
-    - name: Mostrar incidente
+    - name: Criar diretorio de relatorios
+      ansible.builtin.file:
+        path: "{{ report_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Mostrar incidente recebido
       ansible.builtin.debug:
         msg: |
           INCIDENTE: {{ event_alert_name }}
@@ -22,7 +31,9 @@
           Severidade: {{ event_severity }}
           Descricao: {{ event_description | default('N/A') }}
 
-    # 2. Coletar logs do pod via kubernetes.core (usa a credential do AAP)
+    # ============================================================
+    # 2. COLETA DE DADOS
+    # ============================================================
     - name: Coletar logs do pod
       kubernetes.core.k8s_log:
         name: "{{ event_pod }}"
@@ -32,7 +43,6 @@
       ignore_errors: true
       when: event_pod is defined and event_pod | length > 0
 
-    # 3. Coletar detalhes do pod via k8s_info
     - name: Coletar informacoes do pod
       kubernetes.core.k8s_info:
         api_version: v1
@@ -47,26 +57,62 @@
       ansible.builtin.set_fact:
         pod_describe: "{{ pod_info.resources[0] | to_nice_yaml | default('N/A') }}"
 
-    # 4. Descobrir deployment pai via ownerReferences
     - name: Descobrir deployment pai
       ansible.builtin.set_fact:
         parent_deployment: "{% if pod_info.resources | length > 0 %}{{ pod_info.resources[0].metadata.ownerReferences | selectattr('kind', 'equalto', 'ReplicaSet') | map(attribute='name') | first | default('') | regex_replace('-[a-z0-9]+$', '') }}{% else %}N/A{% endif %}"
       when: pod_info is succeeded and pod_info.resources is defined
 
+    - name: Coletar eventos do namespace
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Event
+        namespace: "{{ event_namespace }}"
+      register: namespace_events
+      ignore_errors: true
+
+    - name: Coletar status do deployment
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ parent_deployment }}"
+        namespace: "{{ event_namespace }}"
+      register: deployment_status
+      ignore_errors: true
+      when: parent_deployment | default('') | length > 0 and parent_deployment != 'N/A'
+
     - name: Mostrar deployment encontrado
       ansible.builtin.debug:
         msg: "Deployment pai: {{ parent_deployment | default('NAO ENCONTRADO') }}"
 
-    # 5. Montar prompt para o LLM
-    - name: Montar prompt
+    # ============================================================
+    # 3. MONTAR PROMPT RICO PARA A IA
+    # ============================================================
+    - name: Montar prompt de analise
       ansible.builtin.set_fact:
         llm_prompt: |
-          Voce e um SRE especialista em OpenShift.
-          Analise o incidente e responda EXATAMENTE neste formato:
+          Voce e um SRE senior especialista em OpenShift/Kubernetes.
+          Analise o incidente abaixo e responda EXATAMENTE no formato especificado.
 
-          CAUSA_RAIZ: <uma linha>
-          ACAO_REMEDIACAO: <comando oc ou kubectl exato>
-          PLAYBOOK_SUGERIDO: <YAML ansible minimo>
+          FORMATO DE RESPOSTA OBRIGATORIO (mantenha os marcadores exatos):
+
+          CAUSA_RAIZ: <diagnostico tecnico em uma linha>
+          CONFIANCA: <alta/media/baixa>
+          ACAO_REMEDIACAO: <comando oc/kubectl exato para resolver manualmente>
+          RISCO_REMEDIACAO: <nenhum/baixo/medio/alto - justifique em uma frase>
+
+          PLAYBOOK_REMEDIACAO:
+          ```yaml
+          ---
+          - name: Remediacao - {{ event_alert_name }}
+            hosts: localhost
+            gather_facts: false
+            tasks:
+              # Adicione aqui as tasks Ansible para resolver o incidente
+              # Use kubernetes.core.k8s para manipular recursos do OpenShift
+              # Inclua validacoes (wait/retries) para garantir que funcionou
+          ```
+
+          EXPLICACAO: <explicacao tecnica detalhada do problema e solucao>
 
           DADOS DO INCIDENTE:
           - Alerta: {{ event_alert_name }}
@@ -76,13 +122,31 @@
           - Descricao: {{ event_description | default('N/A') }}
           - Deployment: {{ parent_deployment | default('N/A') }}
 
-          LOGS DO POD:
-          {{ pod_logs.log | default('N/A') }}
+          LOGS DO POD (ultimas 100 linhas):
+          {{ pod_logs.log | default('N/A') | truncate(3000) }}
 
-          DETALHES DO POD (status, restarts, events):
+          STATUS DO POD:
           {{ pod_describe | truncate(2000) }}
 
-    # 6. Consultar LLM
+          EVENTOS DO NAMESPACE:
+          {{ namespace_events.resources | default([]) | map(attribute='message') | list | join('\n') | truncate(2000) }}
+
+          STATUS DO DEPLOYMENT:
+          {{ deployment_status.resources[0].status | default('N/A') | to_nice_yaml | truncate(1500) }}
+
+          REGRAS:
+          - Se o pod estiver em CrashLoopBackOff, verifique imagePullError, OOMKilled, ou readiness/liveness probe failure
+          - Se houver ImagePullBackOff, verifique se a imagem existe e se o secret de pull esta configurado
+          - Se houver OOMKilled, aumente os limits de memoria do deployment
+          - Se houver erro de readiness probe, verifique a porta e o endpoint
+          - Se o deployment nao tiver replicas prontas, verifique events e conditions
+          - O playbook deve ser COMPLETO e EXECUTAVEL, nao um esqueleto
+          - Inclua `ignore_errors: true` apenas onde fizer sentido
+          - Use `retries` e `delay` para operacoes que precisam aguardar
+
+    # ============================================================
+    # 4. CONSULTAR IA
+    # ============================================================
     - name: Consultar IA para diagnostico
       ansible.builtin.uri:
         url: "{{ llm_endpoint }}"
@@ -94,27 +158,84 @@
           model: "{{ llm_model }}"
           messages:
             - role: system
-              content: "Voce e um engenheiro SRE. Responda apenas no formato solicitado."
+              content: "Voce e um engenheiro SRE senior. Responda apenas no formato solicitado. Seja tecnico e preciso."
             - role: user
               content: "{{ llm_prompt }}"
           temperature: 0.1
           max_tokens: 2000
+          stream: false
         status_code: 200
-        timeout: 180
+        timeout: 120
       register: llm_response
+      retries: 3
+      delay: 15
+      until: llm_response.status == 200
 
-    - name: Extrair diagnostico
+    - name: Extrair resposta bruta da IA
       ansible.builtin.set_fact:
-        ai_diagnosis: "{{ llm_response.json.choices[0].message.content }}"
+        ai_raw_response: "{{ llm_response.json.choices[0].message.content }}"
 
-    - name: Mostrar resultado
+    # ============================================================
+    # 5. PARSE DA RESPOSTA DA IA
+    # ============================================================
+    - name: Extrair CAUSA_RAIZ
+      ansible.builtin.set_fact:
+        ai_causa_raiz: '{{ ai_raw_response | regex_search("CAUSA_RAIZ:\s*(.+)") | first | default("NAO IDENTIFICADA") }}'
+
+    - name: Extrair CONFIANCA
+      ansible.builtin.set_fact:
+        ai_confianca: '{{ ai_raw_response | regex_search("CONFIANCA:\s*(\w+)") | first | default("baixa") }}'
+
+    - name: Extrair ACAO_REMEDIACAO
+      ansible.builtin.set_fact:
+        ai_acao: '{{ ai_raw_response | regex_search("ACAO_REMEDIACAO:\s*(.+)") | first | default("N/A") }}'
+
+    - name: Extrair RISCO_REMEDIACAO
+      ansible.builtin.set_fact:
+        ai_risco: '{{ ai_raw_response | regex_search("RISCO_REMEDIACAO:\s*(.+)") | first | default("N/A") }}'
+
+    - name: Extrair PLAYBOOK_REMEDIACAO
+      ansible.builtin.set_fact:
+        ai_playbook_yaml: '{{ ai_raw_response | regex_search("PLAYBOOK_REMEDIACAO:\s*```yaml\n(.*?)\n```", multiline=True) | first | default("") }}'
+
+    - name: Extrair EXPLICACAO
+      ansible.builtin.set_fact:
+        ai_explicacao: '{{ ai_raw_response | regex_search("EXPLICACAO:\s*(.+)") | first | default("N/A") }}'
+
+    # ============================================================
+    # 6. MOSTRAR RESULTADO
+    # ============================================================
+    - name: Mostrar diagnostico da IA
       ansible.builtin.debug:
         msg: |
-          🤖 DIAGNOSTICO DA IA:
-          {{ ai_diagnosis }}
+          ╔══════════════════════════════════════════════════════════════╗
+          ║                    🤖 DIAGNOSTICO DA IA                       ║
+          ╠══════════════════════════════════════════════════════════════╣
+          CAUSA RAIZ:    {{ ai_causa_raiz }}
+          CONFIANCA:     {{ ai_confianca }}
+          ACAO MANUAL:   {{ ai_acao }}
+          RISCO:         {{ ai_risco }}
+          ╠══════════════════════════════════════════════════════════════╣
+          EXPLICACAO:
+          {{ ai_explicacao }}
+          ╚══════════════════════════════════════════════════════════════╝
 
-    # 7. Salvar auditoria
-    - name: Salvar relatorio
+    - name: Verificar se playbook foi gerado
+      ansible.builtin.debug:
+        msg: "⚠️ IA nao gerou playbook de remediacao. Acao manual necessaria."
+      when: ai_playbook_yaml | length == 0
+
+    - name: Mostrar preview do playbook gerado
+      ansible.builtin.debug:
+        msg: |
+          📋 PLAYBOOK DE REMEDIACAO GERADO PELA IA:
+          {{ ai_playbook_yaml | truncate(500) }}
+      when: ai_playbook_yaml | length > 0
+
+    # ============================================================
+    # 7. SALVAR RELATORIO
+    # ============================================================
+    - name: Salvar relatorio completo
       ansible.builtin.copy:
         content: |
           === AIOps Report ===
@@ -126,13 +247,81 @@
           Deployment: {{ parent_deployment | default('N/A') }}
 
           === Diagnostico IA ===
-          {{ ai_diagnosis }}
-        dest: "/tmp/aiops_{{ event_alert_name | replace(' ', '_') }}_{{ event_namespace }}.txt"
+          Causa Raiz: {{ ai_causa_raiz }}
+          Confianca: {{ ai_confianca }}
+          Risco: {{ ai_risco }}
 
-    # 8. REMEDIACAO AUTOMATICA (critical) via kubernetes.core
-    - name: Executar remediacao automatica
+          === Explicacao ===
+          {{ ai_explicacao }}
+
+          === Acao Manual ===
+          {{ ai_acao }}
+
+          === Playbook Gerado ===
+          {{ ai_playbook_yaml }}
+        dest: "{{ report_dir }}/aiops_{{ event_alert_name | replace(' ', '_') | regex_replace('[^a-zA-Z0-9_]', '') }}_{{ event_namespace }}_{{ ansible_date_time.epoch | default(lookup('pipe', 'date +%s')) }}.txt"
+
+    # ============================================================
+    # 8. EXECUTAR REMEDIACAO AUTOMATICA (critical + confianca alta)
+    # ============================================================
+    - name: Decidir se executa remediacao automatica
+      ansible.builtin.set_fact:
+        executar_remediacao: "{{ event_severity == 'critical' and ai_confianca | lower == 'alta' and ai_playbook_yaml | length > 0 and ai_risco | lower is not search('alto') }}"
+
+    - name: Mostrar decisao de remediacao
+      ansible.builtin.debug:
+        msg: |
+          Decisao de remediacao automatica:
+          - Severidade: {{ event_severity }}
+          - Confianca IA: {{ ai_confianca }}
+          - Risco: {{ ai_risco }}
+          - Playbook gerado: {{ 'SIM' if ai_playbook_yaml | length > 0 else 'NAO' }}
+          - EXECUTAR: {{ 'SIM' if executar_remediacao else 'NAO - requer aprovacao manual' }}
+
+    - name: SALVAR playbook gerado para execucao
+      ansible.builtin.copy:
+        content: "{{ ai_playbook_yaml }}"
+        dest: "{{ report_dir }}/remediacao_{{ event_alert_name | replace(' ', '_') | regex_replace('[^a-zA-Z0-9_]', '') }}.yml"
+      when: ai_playbook_yaml | length > 0
+
+    - name: EXECUTAR playbook de remediacao gerado pela IA
       block:
-        - name: Rollout restart deployment via patch
+        - name: Executar playbook de remediacao
+          ansible.builtin.command: |
+            ansible-playbook {{ report_dir }}/remediacao_{{ event_alert_name | replace(' ', '_') | regex_replace('[^a-zA-Z0-9_]', '') }}.yml -v
+          register: remediacao_result
+          ignore_errors: true
+
+        - name: Mostrar resultado da remediacao
+          ansible.builtin.debug:
+            msg: |
+              ✅ REMEDIACAO EXECUTADA
+              Return code: {{ remediacao_result.rc }}
+              Stdout: {{ remediacao_result.stdout | default('N/A') | truncate(500) }}
+              Stderr: {{ remediacao_result.stderr | default('N/A') | truncate(500) }}
+
+        - name: Validar se o incidente foi resolvido
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Pod
+            namespace: "{{ event_namespace }}"
+          register: pods_pos_remediacao
+          ignore_errors: true
+
+        - name: Mostrar status pos-remediacao
+          ansible.builtin.debug:
+            msg: |
+              Status pos-remediacao:
+              Pods em Running: {{ pods_pos_remediacao.resources | default([]) | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+              Total pods: {{ pods_pos_remediacao.resources | default([]) | length }}
+      when: executar_remediacao
+
+    # ============================================================
+    # 9. FALLBACK: Remediacao basica se IA nao gerou playbook
+    # ============================================================
+    - name: Fallback - Rollout restart deployment
+      block:
+        - name: Rollout restart deployment
           kubernetes.core.k8s:
             state: patched
             api_version: apps/v1
@@ -146,9 +335,20 @@
                     annotations:
                       kubectl.kubernetes.io/restartedAt: "{{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -Iseconds')) }}"
           when: parent_deployment | default('') | length > 0 and parent_deployment != 'N/A'
-          ignore_errors: true
 
-        - name: Ou deletar pod diretamente (fallback)
+        - name: Aguardar rollout
+          kubernetes.core.k8s_info:
+            api_version: apps/v1
+            kind: Deployment
+            name: "{{ parent_deployment }}"
+            namespace: "{{ event_namespace }}"
+          register: deploy_status
+          until: deploy_status.resources[0].status.readyReplicas | default(0) == deploy_status.resources[0].spec.replicas | default(1)
+          retries: 12
+          delay: 10
+          when: parent_deployment | default('') | length > 0 and parent_deployment != 'N/A'
+
+        - name: Deletar pod (fallback)
           kubernetes.core.k8s:
             state: absent
             api_version: v1
@@ -157,7 +357,7 @@
             namespace: "{{ event_namespace }}"
           when: parent_deployment | default('') | length == 0 or parent_deployment == 'N/A'
 
-        - name: Notificar sucesso
+        - name: Notificar fallback
           ansible.builtin.debug:
-            msg: "✅ Remediacao executada para {{ event_alert_name }} em {{ event_namespace }}"
-      when: event_severity == "critical"
+            msg: "⚠️ Remediacao fallback executada (restart/delete). Playbook da IA nao estava disponivel."
+      when: not executar_remediacao and event_severity == "critical"

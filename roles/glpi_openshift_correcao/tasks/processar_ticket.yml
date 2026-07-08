@@ -26,7 +26,7 @@
   block:
 
     # ── 1. VERIFICACAO PREVIA — LISTAR UPDATES DE SEGURANCA ──
-     #dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
+    # dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
     - name: "[Ticket {{ ticket_id }}] Listar pacotes de seguranca pendentes"
       ansible.builtin.shell: |
         dnf list updates -q 2>/dev/null | awk 'NR>1 {print $1}'
@@ -40,6 +40,37 @@
       ansible.builtin.set_fact:
         criticos_detectados: "{{ pacotes_pendentes.stdout_lines | select('search', pacotes_criticos_regex) | list | unique }}"
 
+    # ── 2. ALERTA: PACOTES CRITICOS DETECTADOS — Teams + log local ──
+    - name: "[Ticket {{ ticket_id }}] Enviar alerta para Teams"
+      ansible.builtin.uri:
+        url: "{{ teams_webhook_url }}"
+        method: POST
+        body_format: json
+        body:
+          type: "AdaptiveCard"
+          version: "1.2"
+          body:
+            - type: "TextBlock"
+              text: "ALERTA: Pacotes criticos detectados"
+              size: "Large"
+              weight: "Bolder"
+              color: "Attention"
+            - type: "FactSet"
+              facts:
+                - title: "Ticket GLPI:"
+                  value: "{{ ticket_id }}"
+                - title: "VM:"
+                  value: "{{ vm_name }} ({{ vm_ip }})"
+                - title: "Pacotes criticos:"
+                  value: "{{ criticos_detectados | join(', ') }}"
+                - title: "Acao:"
+                  value: "Update NAO aplicado. Requer janela de manutencao."
+        status_code: [200, 202]
+      when:
+        - criticos_detectados | length > 0
+        - teams_webhook_url is defined
+      ignore_errors: true
+
     - name: "[Ticket {{ ticket_id }}] Log local — pacotes criticos detectados, pulando"
       ansible.builtin.debug:
         msg: |
@@ -48,7 +79,7 @@
           Ticket permanece ABERTO no GLPI.
       when: criticos_detectados | length > 0
 
-    # ── 2. SNAPSHOT KUBEVIRT (so se seguro) ──
+    # ── 3. SNAPSHOT KUBEVIRT (so se seguro) ──
     - name: "[Ticket {{ ticket_id }}] Gerar timestamp para snapshot"
       ansible.builtin.set_fact:
         snapshot_ts: "{{ now(fmt='%Y%m%d%H%M%S') }}"
@@ -91,7 +122,7 @@
       delay: 10
       when: criticos_detectados | length == 0
 
-    # ── 3. UPDATE DE SEGURANCA (so se seguro) ──
+    # ── 4. UPDATE DE SEGURANCA (so se seguro) ──
     - name: "[Ticket {{ ticket_id }}] dnf update --security"
       ansible.builtin.shell: |
         dnf update --security -y 2>&1
@@ -101,7 +132,7 @@
       register: dnf_result
       when: criticos_detectados | length == 0
 
-    # ── 4. RELATORIO E GLPI (so se seguro) ──
+    # ── 5. RELATORIO E GLPI (so se seguro) ──
     - name: "[Ticket {{ ticket_id }}] Formatar relatorio de sucesso"
       ansible.builtin.set_fact:
         patch_report: |

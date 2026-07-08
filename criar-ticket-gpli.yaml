@@ -24,7 +24,7 @@
     # =========================================================================
     # 1. INICIAR SESSÃO GLPI
     # =========================================================================
-    - name: Iniciar sessão no GLPI
+    - name: Iniciar sessão no GLPI V4
       ansible.builtin.uri:
         url: "{{ glpi_url }}/apirest.php/initSession"
         method: GET
@@ -38,7 +38,7 @@
         timeout: 30
       register: session
 
-    - name: Verificar sessão
+    - name: Verificar sessão V4
       ansible.builtin.fail:
         msg: "Falha ao iniciar sessão no GLPI"
       when: session.status is not defined or session.status != 200

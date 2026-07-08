@@ -1,5 +1,5 @@
 ---
-- name: Gerar massa de tickets no GLPI (v12 - Tudo em um unico loop, sem script externo)
+- name: Gerar massa de tickets no GLPI (v14 - Python inline limpo)
   hosts: localhost
   gather_facts: yes
   vars:
@@ -29,91 +29,163 @@
       ansible.builtin.set_fact:
         glpi_session_token: "{{ session.json.session_token }}"
 
-    - name: Criar tickets e atrelar grupo em um unico loop
-      block:
-        - name: Gerar dados do ticket
-          ansible.builtin.set_fact:
-            ticket_data: "{{ lookup('pipe', 'python3 -c \"'
-              + 'import random, datetime;'
-              + 'now_str = datetime.datetime.now().isoformat();'
-              + 'srvs = ['
-              + '  {\\'nome\\': \\'web-prod-01\\', \\'ip\\': \\'10.132.0.41\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'web-prod-02\\', \\'ip\\': \\'10.132.0.42\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'app-hml-01\\',  \\'ip\\': \\'10.132.1.15\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'db-prd-01\\',   \\'ip\\': \\'10.132.2.10\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'api-prod-03\\', \\'ip\\': \\'10.132.0.55\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'cache-redis-01\\', \\'ip\\': \\'10.132.3.20\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'lb-nginx-01\\', \\'ip\\': \\'10.132.0.10\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'k8s-master-01\\', \\'ip\\': \\'10.132.4.5\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'jenkins-01\\', \\'ip\\': \\'10.132.1.30\\', \\'resp\\': \\'VIBE\\'},'
-              + '  {\\'nome\\': \\'monitor-01\\', \\'ip\\': \\'10.132.5.8\\', \\'resp\\': \\'VIBE\\'}'
-              + '];'
-              + 'cves = [\\'CVE-2024-1234\\',\\'CVE-2024-5678\\',\\'CVE-2023-9999\\',\\'CVE-2024-1111\\',\\'CVE-2024-2222\\',\\'CVE-2023-7777\\',\\'CVE-2024-3333\\',\\'CVE-2024-4444\\',\\'CVE-2023-5555\\',\\'CVE-2024-8888\\'];'
-              + 'sevs = [\\'CRITICA\\',\\'ALTA\\',\\'MEDIA\\',\\'BAIXA\\'];'
-              + 'nomes = [\\'Falha de conectividade\\',\\'Solicitacao de acesso\\',\\'Lentidao no servidor\\',\\'Erro relatorio\\',\\'Nova VM\\',\\'Falha backup\\',\\'Permissao negada\\',\\'Atualizacao software\\',\\'Troca senha servico\\',\\'Firewall\\',\\'Incidente seguranca\\',\\'Licenca\\',\\'Impressora\\',\\'Email\\',\\'VPN\\',\\'App fora\\',\\'Disco cheio\\',\\'Memoria\\',\\'Certificado SSL\\',\\'API falhando\\'];'
-              + 'descs = [\\'Usuario reportou instabilidade.\\',\\'Avaliacao tecnica urgente.\\',\\'Chamado via monitoramento.\\',\\'Solicitacao NOC.\\',\\'Rotina de checks.\\',\\'Demanda recorrente.\\',\\'Falha em producao.\\',\\'Provisionamento recurso.\\',\\'Threshold ultrapassado.\\',\\'Anomalia em logs.\\'];'
-              + 'is_vuln = (' + (item | string) + ' % ' + (vuln_ratio | string) + ' == 0);'
-              + 'has_ansible = random.choice([True, False]);'
-              + 'srv = random.choice(srvs);'
-              + 'cvss = str(random.randint(1,9)) + \\'.\\' + str(random.randint(0,9));'
-              + 'if is_vuln:'
-              + '  name = \\'Correcao de Vulnerabilidades Identificadas em servidor - Nome: \\' + srv[\\'nome\\'] + \\' - IP: \\' + srv[\\'ip\\'] + \\' - Responsavel: \\' + srv[\\'resp\\'];'
-              + '  content = \\'<p><strong>VULNERABILIDADE DETECTADA</strong><br>CVE: \\' + random.choice(cves) + \\'<br>Servidor: \\' + srv[\\'nome\\'] + \\'<br>IP: \\' + srv[\\'ip\\'] + \\'<br>Responsavel: \\' + srv[\\'resp\\'] + \\'<br>Severidade: \\' + random.choice(sevs) + \\'<br>CVSS Score: \\' + cvss + \\'<br>Data varredura: \\' + now_str + \\'<br>Recomendacao: Aplicar patch imediatamente.</p>\\';'
-              + '  urgency = 5; impact = 5; priority = 5; cat = 7; status = 2;'
-              + 'else:'
-              + '  name = random.choice(nomes) + \\' - Ticket #' + (item | string) + '\\';'
-              + '  content = \\'<p>\\' + random.choice(descs) + \\' Ticket gerado em stress test.</p>\\';'
-              + '  urgency = random.randint(2, 4); impact = random.randint(2, 4); priority = random.randint(1, 4); cat = random.randint(1, 9); status = 1;'
-              + 'import json;'
-              + 'print(json.dumps({\\'name\\': name, \\'content\\': content, \\'urgency\\': urgency, \\'impact\\': impact, \\'priority\\': priority, \\'cat\\': cat, \\'status\\': status, \\'is_vuln\\': is_vuln}))'
-              + '\"') | from_json }}"
+    - name: Gerar todos os tickets via Python inline (unica execucao)
+      ansible.builtin.command:
+        cmd: |
+          python3 -c "
+          import random, json, datetime, urllib.request, urllib.error, ssl, base64, sys
 
-        - name: Criar ticket no GLPI
-          ansible.builtin.uri:
-            url: "{{ glpi_url }}/apirest.php/Ticket"
-            method: POST
-            validate_certs: no
-            headers:
-              Session-Token: "{{ glpi_session_token }}"
-              Content-Type: "application/json"
-            body:
-              input:
-                name: "{{ ticket_data.name }}"
-                content: "{{ ticket_data.content }}"
-                type: 1
-                status: "{{ ticket_data.status }}"
-                urgency: "{{ ticket_data.urgency }}"
-                impact: "{{ ticket_data.impact }}"
-                priority: "{{ ticket_data.priority }}"
-                requesttypes_id: 6
-                itilcategories_id: "{{ ticket_data.cat }}"
-            body_format: json
-            status_code: 201
-            timeout: 30
-          register: created_ticket
-          ignore_errors: yes
+          glpi_url = '{{ glpi_url }}'
+          user = '{{ glpi_user }}'
+          passwd = '{{ glpi_pass }}'
+          count = {{ ticket_count }}
+          ratio = {{ vuln_ratio }}
+          now_str = datetime.datetime.now().isoformat()
 
-        - name: Atrelar grupo ansible ao ticket (se for vulnerabilidade)
-          ansible.builtin.uri:
-            url: "{{ glpi_url }}/apirest.php/Group_Ticket"
-            method: POST
-            validate_certs: no
-            headers:
-              Session-Token: "{{ glpi_session_token }}"
-              Content-Type: "application/json"
-            body:
-              input:
-                tickets_id: "{{ created_ticket.json.id }}"
-                groups_id: 1
-                type: 2
-            body_format: json
-            status_code: 201
-          when:
-            - created_ticket.json.id is defined
-            - ticket_data.is_vuln | bool
-          register: group_attached
+          ctx = ssl.create_default_context()
+          ctx.check_hostname = False
+          ctx.verify_mode = ssl.CERT_NONE
 
-      loop: "{{ range(1, ticket_count + 1) | list }}"
-      loop_control:
-        label: "Ticket {{ item }}"
-      throttle: "{{ throttle_val }}"
+          def req(url, method='GET', headers=None, data=None):
+              r = urllib.request.Request(url, method=method)
+              if headers:
+                  for k,v in headers.items(): r.add_header(k,v)
+              if data:
+                  r.add_header('Content-Type', 'application/json')
+                  r.data = json.dumps(data).encode()
+              try:
+                  with urllib.request.urlopen(r, context=ctx, timeout=30) as resp:
+                      return resp.status, resp.read().decode()
+              except urllib.error.HTTPError as e:
+                  return e.code, (e.read().decode() if e.read() else '')
+              except Exception as e:
+                  return 0, str(e)
+
+          # Login
+          creds = base64.b64encode(f'{user}:{passwd}'.encode()).decode()
+          st, body = req(f'{glpi_url}/apirest.php/initSession', headers={'Authorization': f'Basic {creds}', 'Content-Type': 'application/json'})
+          if st != 200:
+              print(f'ERRO login: {st} {body}', file=sys.stderr)
+              sys.exit(1)
+          token = json.loads(body)['session_token']
+
+          srvs = [
+            {'nome': 'web-prod-01', 'ip': '10.132.0.41', 'resp': 'VIBE'},
+            {'nome': 'web-prod-02', 'ip': '10.132.0.42', 'resp': 'VIBE'},
+            {'nome': 'app-hml-01',  'ip': '10.132.1.15', 'resp': 'VIBE'},
+            {'nome': 'db-prd-01',   'ip': '10.132.2.10', 'resp': 'VIBE'},
+            {'nome': 'api-prod-03', 'ip': '10.132.0.55', 'resp': 'VIBE'},
+            {'nome': 'cache-redis-01', 'ip': '10.132.3.20', 'resp': 'VIBE'},
+            {'nome': 'lb-nginx-01', 'ip': '10.132.0.10', 'resp': 'VIBE'},
+            {'nome': 'k8s-master-01', 'ip': '10.132.4.5', 'resp': 'VIBE'},
+            {'nome': 'jenkins-01', 'ip': '10.132.1.30', 'resp': 'VIBE'},
+            {'nome': 'monitor-01', 'ip': '10.132.5.8', 'resp': 'VIBE'}
+          ]
+
+          cves = ['CVE-2024-1234','CVE-2024-5678','CVE-2023-9999','CVE-2024-1111',
+                  'CVE-2024-2222','CVE-2023-7777','CVE-2024-3333','CVE-2024-4444',
+                  'CVE-2023-5555','CVE-2024-8888']
+          sevs = ['CRITICA','ALTA','MEDIA','BAIXA']
+          nomes = ['Falha de conectividade','Solicitacao de acesso','Lentidao no servidor',
+                   'Erro relatorio','Nova VM','Falha backup','Permissao negada',
+                   'Atualizacao software','Troca senha servico','Firewall','Incidente seguranca',
+                   'Licenca','Impressora','Email','VPN','App fora','Disco cheio',
+                   'Memoria','Certificado SSL','API falhando']
+          descs = ['Usuario reportou instabilidade.','Avaliacao tecnica urgente.',
+                   'Chamado via monitoramento.','Solicitacao NOC.','Rotina de checks.',
+                   'Demanda recorrente.','Falha em producao.','Provisionamento recurso.',
+                   'Threshold ultrapassado.','Anomalia em logs.']
+
+          ok = 0
+          fail = 0
+          vuln_ids = []
+          group_ids = []
+
+          for i in range(1, count + 1):
+              is_vuln = (i % ratio == 0)
+              has_ansible = random.choice([True, False])
+              srv = random.choice(srvs)
+              cvss = f'{random.randint(1,9)}.{random.randint(0,9)}'
+
+              if is_vuln:
+                  name = f'Correcao de Vulnerabilidades Identificadas em servidor - Nome: {srv[\"nome\"]} - IP: {srv[\"ip\"]} - Responsavel: {srv[\"resp\"]}'
+                  content = (f'<p><strong>VULNERABILIDADE DETECTADA</strong><br>'
+                             f'CVE: {random.choice(cves)}<br>'
+                             f'Servidor: {srv[\"nome\"]}<br>IP: {srv[\"ip\"]}<br>'
+                             f'Responsavel: {srv[\"resp\"]}<br>'
+                             f'Severidade: {random.choice(sevs)}<br>'
+                             f'CVSS Score: {cvss}<br>'
+                             f'Data varredura: {now_str}<br>'
+                             f'Recomendacao: Aplicar patch imediatamente.</p>')
+                  urgency = 5
+                  impact = 5
+                  priority = 5
+                  cat = 7
+                  status = 2
+              else:
+                  name = f'{random.choice(nomes)} - Ticket #{i}'
+                  content = f'<p>{random.choice(descs)} Ticket gerado em stress test.</p>'
+                  urgency = random.randint(2, 4)
+                  impact = random.randint(2, 4)
+                  priority = random.randint(1, 4)
+                  cat = random.randint(1, 9)
+                  status = 1
+
+              # Criar ticket
+              st, body = req(f'{glpi_url}/apirest.php/Ticket', method='POST',
+                             headers={'Session-Token': token, 'Content-Type': 'application/json'},
+                             data={'input': {'name': name, 'content': content, 'type': 1, 'status': status,
+                                             'urgency': urgency, 'impact': impact, 'priority': priority,
+                                             'requesttypes_id': 6, 'itilcategories_id': cat}})
+              if st == 201:
+                  tid = json.loads(body)['id']
+                  ok += 1
+                  if is_vuln:
+                      vuln_ids.append(tid)
+                      # Atrelar grupo ansible
+                      st2, _ = req(f'{glpi_url}/apirest.php/Group_Ticket', method='POST',
+                                   headers={'Session-Token': token, 'Content-Type': 'application/json'},
+                                   data={'input': {'tickets_id': tid, 'groups_id': 1, 'type': 2}})
+                      if st2 == 201:
+                          group_ids.append(tid)
+                  elif has_ansible:
+                      group_ids.append(tid)
+              else:
+                  fail += 1
+
+              if i % 100 == 0:
+                  print(f'Progresso: {i}/{count} OK={ok} Fail={fail}', file=sys.stderr)
+
+          # Logout
+          req(f'{glpi_url}/apirest.php/killSession', headers={'Session-Token': token})
+
+          stats = {'ok': ok, 'fail': fail, 'vuln': len(vuln_ids), 'groups': len(group_ids), 'ids': vuln_ids[:10]}
+          print(json.dumps(stats))
+          "
+      register: py_result
+      changed_when: true
+
+    - name: Parsear resultado
+      ansible.builtin.set_fact:
+        glpi_stats: "{{ py_result.stdout | from_json }}"
+
+    - name: Resumo
+      ansible.builtin.debug:
+        msg:
+          - "========================================"
+          - "Total: {{ ticket_count }}"
+          - "Criados: {{ glpi_stats.ok }}"
+          - "Falhas: {{ glpi_stats.fail }}"
+          - "Vuln (assigned): {{ glpi_stats.vuln }}"
+          - "Grupos atrelados: {{ glpi_stats.groups }}"
+          - "Primeiros IDs: {{ glpi_stats.ids }}"
+          - "========================================"
+
+    - name: Exportar stats
+      ansible.builtin.set_stats:
+        data:
+          glpi_total_criados: "{{ glpi_stats.ok }}"
+          glpi_total_falhas: "{{ glpi_stats.fail }}"
+          glpi_vuln_count: "{{ glpi_stats.vuln }}"
+          glpi_group_attached: "{{ glpi_stats.groups }}"
+        per_host: no

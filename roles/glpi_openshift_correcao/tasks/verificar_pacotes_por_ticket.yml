@@ -1,80 +1,37 @@
 ---
-# Processa UM ticket critico: snapshot + dnf update
-# Se falhar em qualquer etapa, registra como falha
+# Loop task: extrai VM/IP, lista updates, classifica como seguro ou critico
 
-- name: "[Ticket {{ ticket.id }}] Setup"
+- name: "[Ticket {{ ticket.id }}] Extrair nome da VM e IP do titulo"
   ansible.builtin.set_fact:
-    ticket_id: "{{ ticket.id }}"
-    vm_name: "{{ ticket.vm_name }}"
-    vm_ip: "{{ ticket.vm_ip }}"
+    _vm_name: "{{ ticket.name | regex_search('(?i)nome[:\\s]+([A-Za-z0-9._-]+)', '\\1') | first | default('') | trim }}"
+    _vm_ip: "{{ ticket.name | regex_search('(?i)IP[:\\s]+([0-9.]+)', '\\1') | first | default('') | trim }}"
 
-- name: "[Ticket {{ ticket_id }}] Gerar timestamp"
-  ansible.builtin.set_fact:
-    snapshot_ts: "{{ now(fmt='%Y%m%d%H%M%S') }}"
+- name: "[Ticket {{ ticket.id }}] Pular se VM/IP nao identificados"
+  ansible.builtin.debug:
+    msg: "Ticket {{ ticket.id }}: VM/IP nao extraido. Pulando."
+  when: _vm_name | length == 0 or _vm_ip | length == 0
 
-- name: "[Ticket {{ ticket_id }}] Montar nome do snapshot"
-  ansible.builtin.set_fact:
-    snapshot_name: "{{ vm_name }}-{{ snapshot_prefix | default('glpi') }}-{{ ticket_id }}-{{ snapshot_ts }}"
-
-- name: "[Ticket {{ ticket_id }}] Criar snapshot no OpenShift"
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: "{{ snapshot_api_version }}"
-      kind: VirtualMachineSnapshot
-      metadata:
-        name: "{{ snapshot_name }}"
-        namespace: "{{ openshift_namespace }}"
-      spec:
-        source:
-          apiGroup: kubevirt.io
-          kind: VirtualMachine
-          name: "{{ vm_name }}"
-  register: snapshot_created
-  ignore_errors: true
-
-- name: "[Ticket {{ ticket_id }}] Aguardar snapshot ficar ready"
-  kubernetes.core.k8s_info:
-    api_version: "{{ snapshot_api_version }}"
-    kind: VirtualMachineSnapshot
-    name: "{{ snapshot_name }}"
-    namespace: "{{ openshift_namespace }}"
-  register: snapshot_status
-  until: snapshot_status.resources is defined and snapshot_status.resources | length > 0 and snapshot_status.resources[0].status.readyToUse | default(false)
-  retries: 30
-  delay: 10
-  when: snapshot_created is succeeded
-
-- name: "[Ticket {{ ticket_id }}] dnf update --security"
+- name: "[Ticket {{ ticket.id }}] Listar updates de seguranca"
   ansible.builtin.shell: |
-    dnf update --security -y 2>&1
-  delegate_to: "{{ vm_ip }}"
+    dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
+  delegate_to: "{{ _vm_ip }}"
   become: "{{ vm_become }}"
   become_user: "{{ vm_become_user }}"
-  register: dnf_result
-  when: snapshot_created is succeeded
-  ignore_errors: true
+  register: _pacotes_pendentes
+  changed_when: false
+  when: _vm_name | length > 0 and _vm_ip | length > 0
 
-- name: "[Ticket {{ ticket_id }}] Verificar se houve falha"
+- name: "[Ticket {{ ticket.id }}] Verificar se ha pacotes criticos"
   ansible.builtin.set_fact:
-    _falhou: "{{ snapshot_created is failed or dnf_result is failed }}"
+    _criticos: "{{ _pacotes_pendentes.stdout_lines | default([]) | select('search', pacotes_criticos_regex) | list | unique }}"
+  when: _vm_name | length > 0 and _vm_ip | length > 0
 
-- name: "[Ticket {{ ticket_id }}] Formatar relatorio de sucesso"
+- name: "[Ticket {{ ticket.id }}] Classificar como CRITICO"
   ansible.builtin.set_fact:
-    _patch_report: "=== Correcao Automatica GLPI #{{ ticket_id }} ===\nVM: {{ vm_name }}\nIP: {{ vm_ip }}\nSnapshot: {{ snapshot_name }}\n\n--- dnf update --security ---\nResultado:\n{{ dnf_result.stdout | default('N/A') }}\n\nOBS: Favor realizar o patch scan na ferramenta do EndPoint Central para validar que a vulnerabilidade foi corrigida."
-  when: not _falhou
+    _tickets_criticos: "{{ _tickets_criticos + [{ 'id': ticket.id, 'name': ticket.name, 'vm_name': _vm_name, 'vm_ip': _vm_ip, 'criticos': _criticos, 'pacotes_todos': _pacotes_pendentes.stdout_lines | default([]) }] }}"
+  when: _vm_name | length > 0 and _vm_ip | length > 0 and _criticos | length > 0
 
-- name: "[Ticket {{ ticket_id }}] Acumular resultado SUCESSO"
+- name: "[Ticket {{ ticket.id }}] Classificar como SEGURO"
   ansible.builtin.set_fact:
-    _resultados: "{{ _resultados + [{ 'id': ticket_id, 'vm_name': vm_name, 'vm_ip': vm_ip, 'snapshot_name': snapshot_name, 'relatorio': _patch_report, 'sucesso': true }] }}"
-  when: not _falhou
-
-- name: "[Ticket {{ ticket_id }}] Montar mensagem de erro"
-  ansible.builtin.set_fact:
-    _erro_msg: "FALHA na correcao automatica. Erro: {{ snapshot_created.msg | default(dnf_result.msg | default('erro desconhecido')) }}"
-  when: _falhou
-
-- name: "[Ticket {{ ticket_id }}] Acumular resultado FALHA"
-  ansible.builtin.set_fact:
-    _resultados: "{{ _resultados + [{ 'id': ticket.id, 'vm_name': ticket.vm_name, 'vm_ip': ticket.vm_ip, 'snapshot_name': 'N/A', 'relatorio': _erro_msg, 'sucesso': false }] }}"
-  when: _falhou
+    _tickets_seguros: "{{ _tickets_seguros + [ticket] }}"
+  when: _vm_name | length > 0 and _vm_ip | length > 0 and _criticos | length == 0

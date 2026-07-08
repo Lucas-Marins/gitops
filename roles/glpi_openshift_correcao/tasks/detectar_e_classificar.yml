@@ -108,7 +108,7 @@
   loop_control:
     loop_var: ticket
 
-# ── 8. PROCESSAR OS SEGUROS IMEDIATAMENTE (reaproveita seu codigo) ──
+# ── 8. PROCESSAR OS SEGUROS IMEDIATAMENTE ──
 - name: "GLPI | Processar tickets SEGUROS (sem criticos)"
   ansible.builtin.include_tasks: processar_ticket.yml
   loop: "{{ _tickets_seguros }}"
@@ -127,25 +127,51 @@
     content: "{{ _tickets_criticos | to_nice_json }}"
   when: _tickets_criticos | length > 0
 
-# ── 10. NOTIFICAR TEAMS SE HOUVER CRITICOS ──
-- name: "GLPI | Notificar Teams — aguardando aprovacao no AAP"
+# ── 10. NOTIFICAR POWER AUTOMATE / TEAMS ──
+- name: "GLPI | Notificar Teams via Power Automate — aguardando aprovacao"
   ansible.builtin.uri:
     url: "{{ teams_webhook_url }}"
     method: POST
     body_format: json
     body:
-      text: |
-        🔒 **Aprovacao necessaria — {{ _tickets_criticos | length }} ticket(s) com pacotes criticos**
-        {% for t in _tickets_criticos %}
-        • Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }}) | Pacotes: {{ t.criticos | join(', ') }}
-        {% endfor %}
-
-        O workflow esta **PAUSADO** no AAP. Clique para aprovar:
-        {{ aap_base_url }}/controller/#/jobs/workflow/{{ tower_workflow_job_id }}/details
+      type: "AdaptiveCard"
+      version: "1.2"
+      body:
+        - type: "TextBlock"
+          text: "🔒 Aprovacao necessaria — {{ _tickets_criticos | length }} ticket(s) com pacotes criticos"
+          size: "Large"
+          weight: "Bolder"
+          color: "Attention"
+        - type: "FactSet"
+          facts:
+            - title: "Workflow ID:"
+              value: "{{ _workflow_id }}"
+            - title: "Total criticos:"
+              value: "{{ _tickets_criticos | length }}"
+        - type: "TextBlock"
+          text: "Detalhes dos tickets:"
+          weight: "Bolder"
+          size: "Medium"
+        - type: "TextBlock"
+          text: |
+            {% for t in _tickets_criticos %}
+            • Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }}) | Pacotes: {{ t.criticos | join(', ') }}
+            {% endfor %}
+          wrap: true
+        - type: "TextBlock"
+          text: "O workflow esta PAUSADO no AAP aguardando sua aprovacao."
+          wrap: true
+          isSubtle: true
+          color: "Warning"
+      actions:
+        - type: "Action.OpenUrl"
+          title: "🔗 Aprovar / Rejeitar no AAP"
+          url: "{{ aap_base_url }}/controller/#/jobs/workflow/{{ tower_workflow_job_id }}/details"
     status_code: [200, 202]
   when:
     - _tickets_criticos | length > 0
     - teams_webhook_url is defined
+    - teams_webhook_url | length > 0
   ignore_errors: true
 
 # ── 11. ENCERRAR SESSAO GLPI ──

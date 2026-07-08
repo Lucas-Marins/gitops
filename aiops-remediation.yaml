@@ -8,7 +8,7 @@
     report_dir: "/tmp/aiops_reports"
 
   tasks:
-    - name: Validar variaveis do evento
+    - name: Validar variaveis
       ansible.builtin.fail:
         msg: "event_alert_name ou event_namespace nao definidos"
       when: event_alert_name is not defined or event_namespace is not defined
@@ -26,7 +26,6 @@
           Namespace: {{ event_namespace }}
           Pod: {{ event_pod | default('N/A') }}
           Severidade: {{ event_severity }}
-          Descricao: {{ event_description | default('N/A') }}
 
     - name: Coletar logs do pod
       kubernetes.core.k8s_log:
@@ -47,34 +46,26 @@
       ignore_errors: true
       when: event_pod is defined and event_pod | length > 0
 
-    - name: Extrair descricao do pod
+    - name: Extrair status do pod
       ansible.builtin.set_fact:
-        pod_describe: "{{ pod_info.resources[0] | to_nice_yaml | default('N/A') }}"
-
-    - name: Descobrir deployment pai
-      ansible.builtin.set_fact:
+        pod_phase: "{{ pod_info.resources[0].status.phase | default('N/A') }}"
+        pod_restart_count: "{{ pod_info.resources[0].status.containerStatuses[0].restartCount | default(0) }}"
+        pod_reason: "{{ pod_info.resources[0].status.containerStatuses[0].state.terminated.reason | default('N/A') }}"
+        pod_exit_code: "{{ pod_info.resources[0].status.containerStatuses[0].state.terminated.exitCode | default('N/A') }}"
         parent_deployment: "{% if pod_info.resources | length > 0 %}{{ pod_info.resources[0].metadata.ownerReferences | selectattr('kind', 'equalto', 'ReplicaSet') | map(attribute='name') | first | default('') | regex_replace('-[a-z0-9]+$', '') }}{% else %}N/A{% endif %}"
-      when: pod_info is succeeded and pod_info.resources is defined
 
     - name: Coletar eventos do namespace
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Event
         namespace: "{{ event_namespace }}"
+        field_selectors:
+          - reason!=SuccessfulAttachVolume
+          - reason!=SuccessfulMountVolume
       register: namespace_events
       ignore_errors: true
 
-    - name: Coletar status do deployment
-      kubernetes.core.k8s_info:
-        api_version: apps/v1
-        kind: Deployment
-        name: "{{ parent_deployment }}"
-        namespace: "{{ event_namespace }}"
-      register: deployment_status
-      ignore_errors: true
-      when: parent_deployment | default('') | length > 0 and parent_deployment != 'N/A'
-
-    - name: Consultar IA para diagnostico
+    - name: Tentar consultar IA
       ansible.builtin.uri:
         url: "{{ llm_endpoint }}"
         method: POST
@@ -85,46 +76,42 @@
           model: "{{ llm_model }}"
           messages:
             - role: system
-              content: "Voce e um engenheiro SRE senior. Responda apenas no formato solicitado. Seja tecnico e preciso."
+              content: "Voce e um engenheiro SRE senior. Responda apenas no formato solicitado."
             - role: user
               content: |
-                Voce e um SRE senior especialista em OpenShift/Kubernetes.
                 Analise o incidente e responda EXATAMENTE no formato:
 
-                CAUSA_RAIZ: <diagnostico tecnico em uma linha>
+                CAUSA_RAIZ: <diagnostico>
                 CONFIANCA: <alta/media/baixa>
-                SOLUCAO: <passo a passo claro para resolver>
-                COMANDO: <comando oc ou kubectl exato>
-                PREVENCAO: <como evitar que volte a acontecer>
+                SOLUCAO: <passo a passo>
+                COMANDO: <comando oc/kubectl>
+                PREVENCAO: <como evitar>
 
-                DADOS DO INCIDENTE:
+                DADOS:
                 - Alerta: {{ event_alert_name }}
                 - Namespace: {{ event_namespace }}
                 - Pod: {{ event_pod | default('N/A') }}
-                - Severidade: {{ event_severity }}
-                - Descricao: {{ event_description | default('N/A') }}
+                - Status: {{ pod_phase }}
+                - Restarts: {{ pod_restart_count }}
+                - Reason: {{ pod_reason }}
+                - ExitCode: {{ pod_exit_code }}
                 - Deployment: {{ parent_deployment | default('N/A') }}
+                - Descricao: {{ event_description | default('N/A') }}
 
-                LOGS DO POD:
-                {{ pod_logs.log | default('N/A') | truncate(3000) }}
+                LOGS:
+                {{ pod_logs.log | default('N/A') | truncate(1500) }}
 
-                STATUS DO POD:
-                {{ pod_describe | truncate(2000) }}
-
-                EVENTOS DO NAMESPACE:
-                {{ namespace_events.resources | default([]) | map(attribute='message') | list | join('\n') | truncate(2000) }}
-
-                STATUS DO DEPLOYMENT:
-                {{ deployment_status.resources[0].status | default('N/A') | to_nice_yaml | truncate(1500) }}
+                EVENTOS RECENTES:
+                {{ namespace_events.resources | default([]) | map(attribute='message') | list | join('\n') | truncate(1000) }}
           temperature: 0.1
-          max_tokens: 1500
+          max_tokens: 800
           stream: false
         status_code: 200
-        timeout: 180
+        timeout: 300
         validate_certs: false
       register: llm_response
-      retries: 2
-      delay: 10
+      retries: 1
+      delay: 5
       until: llm_response.status == 200
       ignore_errors: true
 
@@ -149,11 +136,11 @@
 
     - name: Fallback - IA indisponivel
       ansible.builtin.set_fact:
-        ai_causa_raiz: "IA indisponivel - analise heuristica"
+        ai_causa_raiz: "IA indisponivel - timeout ou falha de conexao"
         ai_confianca: "media"
-        ai_solucao: "Verificar logs do pod e status do deployment. Reiniciar o deployment se necessario."
+        ai_solucao: "Verificar logs do pod e reiniciar o deployment."
         ai_comando: "oc rollout restart deployment/{{ parent_deployment }} -n {{ event_namespace }}"
-        ai_prevencao: "Configurar liveness/readiness probes e resource limits adequados."
+        ai_prevencao: "Configurar probes e resource limits adequados."
       when: not llm_available
 
     - name: Mostrar diagnostico

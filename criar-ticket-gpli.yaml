@@ -1,15 +1,15 @@
 ---
 # =============================================================================
-# GLPI Stress Test v3 - Sem Jinja2 complexo no YAML
+# GLPI Stress Test v4 - Minimalista e Robusto
 # =============================================================================
 # Gera 5000+ tickets. ~15% com padrão de vulnerabilidade.
 # Vulnerabilidade: "Correção de Vulnerabilidades Identificadas em servidor - Nome: X - IP: Y - Responsável: VIBE"
 # ~50% dos tickets recebem grupo ansible.
 #
-# Uso: ansible-playbook glpi_stress_test_v3.yml
+# Uso: ansible-playbook glpi_stress_test_v4.yml
 # =============================================================================
 
-- name: Gerar massa de tickets no GLPI (v3)
+- name: Gerar massa de tickets no GLPI (v4)
   hosts: localhost
   gather_facts: yes
   vars:
@@ -48,90 +48,93 @@
         glpi_session_token: "{{ session.json.session_token }}"
 
     # =========================================================================
-    # 2. GERAR METADADOS VIA PYTHON (evita Jinja2 complexo no YAML)
+    # 2. GERAR METADADOS VIA SCRIPT PYTHON (salva em arquivo JSON)
     # =========================================================================
-    - name: Gerar metadados dos tickets via Python
-      ansible.builtin.shell: |
-        python3 -c "
-        import random, json, datetime
+    - name: Criar script gerador de tickets
+      ansible.builtin.copy:
+        dest: /tmp/glpi_ticket_generator.py
+        content: |
+          import random, json, datetime, sys
 
-        ticket_count = {{ ticket_count }}
-        vuln_ratio = {{ vuln_ratio }}
+          ticket_count = int(sys.argv[1])
+          vuln_ratio = int(sys.argv[2])
+          now_str = datetime.datetime.now().isoformat()
 
-        servidores = [
-            {'nome': 'web-prod-01', 'ip': '10.132.0.41', 'responsavel': 'VIBE'},
-            {'nome': 'web-prod-02', 'ip': '10.132.0.42', 'responsavel': 'VIBE'},
-            {'nome': 'app-hml-01',  'ip': '10.132.1.15', 'responsavel': 'VIBE'},
-            {'nome': 'db-prd-01',   'ip': '10.132.2.10', 'responsavel': 'VIBE'},
-            {'nome': 'api-prod-03', 'ip': '10.132.0.55', 'responsavel': 'VIBE'},
-            {'nome': 'cache-redis-01', 'ip': '10.132.3.20', 'responsavel': 'VIBE'},
-            {'nome': 'lb-nginx-01', 'ip': '10.132.0.10', 'responsavel': 'VIBE'},
-            {'nome': 'k8s-master-01', 'ip': '10.132.4.5', 'responsavel': 'VIBE'},
-            {'nome': 'jenkins-01', 'ip': '10.132.1.30', 'responsavel': 'VIBE'},
-            {'nome': 'monitor-01', 'ip': '10.132.5.8', 'responsavel': 'VIBE'}
-        ]
+          servidores = [
+              {"nome": "web-prod-01", "ip": "10.132.0.41", "responsavel": "VIBE"},
+              {"nome": "web-prod-02", "ip": "10.132.0.42", "responsavel": "VIBE"},
+              {"nome": "app-hml-01",  "ip": "10.132.1.15", "responsavel": "VIBE"},
+              {"nome": "db-prd-01",   "ip": "10.132.2.10", "responsavel": "VIBE"},
+              {"nome": "api-prod-03", "ip": "10.132.0.55", "responsavel": "VIBE"},
+              {"nome": "cache-redis-01", "ip": "10.132.3.20", "responsavel": "VIBE"},
+              {"nome": "lb-nginx-01", "ip": "10.132.0.10", "responsavel": "VIBE"},
+              {"nome": "k8s-master-01", "ip": "10.132.4.5", "responsavel": "VIBE"},
+              {"nome": "jenkins-01", "ip": "10.132.1.30", "responsavel": "VIBE"},
+              {"nome": "monitor-01", "ip": "10.132.5.8", "responsavel": "VIBE"}
+          ]
 
-        cves = ['CVE-2024-1234','CVE-2024-5678','CVE-2023-9999','CVE-2024-1111',
-                'CVE-2024-2222','CVE-2023-7777','CVE-2024-3333','CVE-2024-4444',
-                'CVE-2023-5555','CVE-2024-8888']
+          cves = ["CVE-2024-1234","CVE-2024-5678","CVE-2023-9999","CVE-2024-1111",
+                  "CVE-2024-2222","CVE-2023-7777","CVE-2024-3333","CVE-2024-4444",
+                  "CVE-2023-5555","CVE-2024-8888"]
 
-        sevs = ['CRITICA','ALTA','MEDIA','BAIXA']
+          sevs = ["CRITICA","ALTA","MEDIA","BAIXA"]
 
-        nomes = ['Falha de conectividade','Solicitação de acesso','Lentidão no servidor',
-                 'Erro relatório','Nova VM','Falha backup','Permissão negada',
-                 'Atualização software','Troca senha serviço','Firewall','Incidente segurança',
-                 'Licença','Impressora','Email','VPN','App fora','Disco cheio',
-                 'Memória','Certificado SSL','API falhando']
+          nomes = ["Falha de conectividade","Solicitação de acesso","Lentidão no servidor",
+                   "Erro relatório","Nova VM","Falha backup","Permissão negada",
+                   "Atualização software","Troca senha serviço","Firewall","Incidente segurança",
+                   "Licença","Impressora","Email","VPN","App fora","Disco cheio",
+                   "Memória","Certificado SSL","API falhando"]
 
-        descs = ['Usuário reportou instabilidade.','Avaliação técnica urgente.',
-                 'Chamado via monitoramento.','Solicitação NOC.','Rotina de checks.',
-                 'Demanda recorrente.','Falha em produção.','Provisionamento recurso.',
-                 'Threshold ultrapassado.','Anomalia em logs.']
+          descs = ["Usuário reportou instabilidade.","Avaliação técnica urgente.",
+                   "Chamado via monitoramento.","Solicitação NOC.","Rotina de checks.",
+                   "Demanda recorrente.","Falha em produção.","Provisionamento recurso.",
+                   "Threshold ultrapassado.","Anomalia em logs."]
 
-        now_str = datetime.datetime.now().isoformat()
-        tickets = []
+          tickets = []
+          for i in range(1, ticket_count + 1):
+              is_vuln = (i % vuln_ratio == 0)
+              has_ansible = random.choice([True, False])
+              srv = random.choice(servidores)
+              cvss = f"{random.randint(1,9)}.{random.randint(0,9)}"
 
-        for i in range(1, ticket_count + 1):
-            is_vuln = (i % vuln_ratio == 0)
-            has_ansible = random.choice([True, False])
-            srv = random.choice(servidores)
-            cvss = f'{random.randint(1,9)}.{random.randint(0,9)}'
+              if is_vuln:
+                  name = f"Correção de Vulnerabilidades Identificadas em servidor - Nome: {srv['nome']} - IP: {srv['ip']} - Responsável: {srv['responsavel']}"
+                  content = (f"<p><strong>VULNERABILIDADE DETECTADA</strong><br>"
+                             f"CVE: {random.choice(cves)}<br>"
+                             f"Servidor: {srv['nome']}<br>IP: {srv['ip']}<br>"
+                             f"Responsável: {srv['responsavel']}<br>"
+                             f"Severidade: {random.choice(sevs)}<br>"
+                             f"CVSS Score: {cvss}<br>"
+                             f"Data varredura: {now_str}<br>"
+                             f"Recomendação: Aplicar patch imediatamente.</p>")
+                  urgency = 5
+                  impact = 5
+                  priority = 5
+                  cat = 7
+              else:
+                  name = f"{random.choice(nomes)} - Ticket #{i}"
+                  content = f"<p>{random.choice(descs)} Ticket gerado em stress test.</p>"
+                  urgency = random.randint(2, 4)
+                  impact = random.randint(2, 4)
+                  priority = random.randint(1, 4)
+                  cat = random.randint(1, 9)
 
-            if is_vuln:
-                name = f'Correção de Vulnerabilidades Identificadas em servidor - Nome: {srv[\"nome\"]} - IP: {srv[\"ip\"]} - Responsável: {srv[\"responsavel\"]}'
-                content = (f'<p><strong>VULNERABILIDADE DETECTADA</strong><br>'
-                           f'CVE: {random.choice(cves)}<br>'
-                           f'Servidor: {srv[\"nome\"]}<br>IP: {srv[\"ip\"]}<br>'
-                           f'Responsável: {srv[\"responsavel\"]}<br>'
-                           f'Severidade: {random.choice(sevs)}<br>'
-                           f'CVSS Score: {cvss}<br>'
-                           f'Data varredura: {now_str}<br>'
-                           f'Recomendação: Aplicar patch imediatamente.</p>')
-                urgency = 5
-                impact = 5
-                priority = 5
-                cat = 7
-            else:
-                name = f'{random.choice(nomes)} - Ticket #{i}'
-                content = f'<p>{random.choice(descs)} Ticket gerado em stress test.</p>'
-                urgency = random.randint(2, 4)
-                impact = random.randint(2, 4)
-                priority = random.randint(1, 4)
-                cat = random.randint(1, 9)
+              tickets.append({
+                  "idx": i,
+                  "name": name,
+                  "content": content,
+                  "urgency": urgency,
+                  "impact": impact,
+                  "priority": priority,
+                  "cat": cat,
+                  "has_ansible": has_ansible
+              })
 
-            tickets.append({
-                'idx': i,
-                'name': name,
-                'content': content,
-                'urgency': urgency,
-                'impact': impact,
-                'priority': priority,
-                'cat': cat,
-                'has_ansible': has_ansible
-            })
+          print(json.dumps(tickets))
+      changed_when: false
 
-        print(json.dumps(tickets))
-        "
+    - name: Executar script gerador
+      ansible.builtin.command: "python3 /tmp/glpi_ticket_generator.py {{ ticket_count }} {{ vuln_ratio }}"
       register: py_output
       changed_when: false
 
@@ -140,7 +143,7 @@
         ticket_list: "{{ py_output.stdout | from_json }}"
 
     # =========================================================================
-    # 3. CRIAR TICKETS NO GLPI
+    # 3. CRIAR TICKETS NO GLPI (loop simples, sem Jinja2 complexo)
     # =========================================================================
     - name: Criar ticket no GLPI
       ansible.builtin.uri:
@@ -167,7 +170,7 @@
         timeout: 30
       loop: "{{ ticket_list }}"
       loop_control:
-        label: "Ticket {{ item.idx }}/{{ ticket_count }} | Ansible={{ item.has_ansible }}"
+        label: "Ticket {{ item.idx }}/{{ ticket_count }}"
       throttle: "{{ throttle_val }}"
       register: ticket_results
       ignore_errors: yes
@@ -176,7 +179,7 @@
       until: ticket_results is succeeded
 
     # =========================================================================
-    # 4. ESTATÍSTICAS
+    # 4. ESTATÍSTICAS (com fallback seguro)
     # =========================================================================
     - name: Extrair resultados com fallback
       ansible.builtin.set_fact:

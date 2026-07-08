@@ -78,6 +78,7 @@
       status: "{{ item.json.status | default('') }}"
   loop: "{{ _ticket_details.results }}"
   register: _ticket_items
+  
 
 - name: "GLPI | Consolidar tickets"
   ansible.builtin.set_fact:

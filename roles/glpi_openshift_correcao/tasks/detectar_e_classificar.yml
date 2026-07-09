@@ -191,7 +191,7 @@
       actions:
         - type: "Action.OpenUrl"
           title: "🔗 Aprovar / Rejeitar no AAP"
-          url: "{{ aap_base_url }}/execution/administration/workflow-approvals/{{ tower_workflow_job_id }}/details"
+          url: "{{ aap_base_url }}/execution/administration/workflow-approvals/"
     status_code: [200, 202]
   when:
     - _tickets_para_aprovacao | length > 0
@@ -241,7 +241,7 @@
       actions:
         - type: "Action.OpenUrl"
           title: "🔗 Aprovar / Rejeitar no AAP"
-          url: "{{ aap_base_url }}/execution/administration/workflow-approvals/{{ tower_workflow_job_id }}/details"
+          url: "{{ aap_base_url }}/execution/administration/workflow-approvals/"
     status_code: [200, 202]
   when:
     - _tickets_para_aprovacao | length > 0

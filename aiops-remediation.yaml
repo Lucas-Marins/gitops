@@ -83,7 +83,7 @@
 
                 CAUSA_RAIZ: <diagnostico>
                 CONFIANCA: <alta/media/baixa>
-                SOLUCAO: <me forneça um playbook de ansible>
+                SOLUCAO: <passo a passo para resolver>
                 COMANDO: <comando oc/kubectl>
                 PREVENCAO: <como evitar>
 

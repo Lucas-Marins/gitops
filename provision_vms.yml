@@ -102,3 +102,5 @@
       loop:
         - { role: "web", env: "prod", id: 1 }
         - { role: "app", env: "prod", id: 2 }
+        - { role: "db", env: "prod", id: 3 }
+        - { role: "nfs", env: "prod", id: 4 }

@@ -1,7 +1,7 @@
 ---
 # ═══════════════════════════════════════════════════════════
 # JOB 1: Busca tickets, lista TODOS os pacotes,
-# envia card no Teams com aprovação + destaque nos críticos,
+# envia UM card no Teams com aprovacao + destaque nos criticos,
 # passa dados para Job 2 via set_stats.
 # ═══════════════════════════════════════════════════════════
 
@@ -114,6 +114,7 @@
     _total_tickets: "{{ _tickets_para_aprovacao | length }}"
     _tickets_com_criticos: "{{ _tickets_para_aprovacao | selectattr('tem_criticos', 'equalto', true) | list }}"
     _tickets_sem_criticos: "{{ _tickets_para_aprovacao | selectattr('tem_criticos', 'equalto', false) | list }}"
+    _tem_criticos: "{{ _tickets_com_criticos | length > 0 }}"
 
 - name: "GLPI | Debug — resumo"
   ansible.builtin.debug:
@@ -128,8 +129,8 @@
       glpi_tickets_com_criticos: "{{ _tickets_com_criticos | length }}"
   when: _tickets_para_aprovacao | length > 0
 
-# ── 10. NOTIFICAR TEAMS VIA POWER AUTOMATE ──
-- name: "GLPI | Notificar Teams COM criticos"
+# ── 10. NOTIFICAR TEAMS VIA POWER AUTOMATE (UNICO CARD) ──
+- name: "GLPI | Notificar Teams — aguardando aprovacao"
   ansible.builtin.uri:
     url: "{{ teams_webhook_url }}"
     method: POST
@@ -139,10 +140,10 @@
       version: "1.2"
       body:
         - type: "TextBlock"
-          text: "🔒 Aprovacao necessaria — {{ _total_tickets }} ticket(s) — ⚠️ {{ _tickets_com_criticos | length }} CRITICO(S)"
+          text: "{% if _tem_criticos %}🔒 Aprovacao necessaria — {{ _total_tickets }} ticket(s) — ⚠️ {{ _tickets_com_criticos | length }} CRITICO(S){% else %}🔒 Aprovacao necessaria — {{ _total_tickets }} ticket(s){% endif %}"
           size: "Large"
           weight: "Bolder"
-          color: "Attention"
+          color: "{% if _tem_criticos %}Attention{% else %}Accent{% endif %}"
         - type: "FactSet"
           facts:
             - title: "Workflow Job ID:"
@@ -152,71 +153,9 @@
             - title: "Com criticos:"
               value: "{{ _tickets_com_criticos | length }}"
         - type: "TextBlock"
-          text: "⚠️ SERVIDORES CRITICOS:"
-          weight: "Bolder"
-          size: "Medium"
-          color: "Attention"
-        - type: "TextBlock"
-          text: |
-            {% for t in _tickets_com_criticos %}
-            🔴 Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }})
-            Pacotes CRITICOS: {{ t.criticos | join(', ') }}
-            Demais: {{ t.nao_criticos | join(', ') | default('nenhum') }}
-            ---
-            {% endfor %}
+          text: "{% if _tem_criticos %}⚠️ ATENCAO: {{ _tickets_com_criticos | length }} ticket(s) contem pacotes CRITICOS. Requer analise cuidadosa antes da aprovacao.{% else %}✅ Nenhum pacote critico detectado. Todos os tickets sao seguros para atualizacao.{% endif %}"
           wrap: true
-        - type: "TextBlock"
-          text: "Demais tickets (sem criticos):"
-          weight: "Bolder"
-          size: "Medium"
-          isSubtle: true
-        - type: "TextBlock"
-          text: |
-            {% for t in _tickets_sem_criticos %}
-            • Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }})
-            Pacotes: {{ t.todos_pacotes | join(', ') | default('nenhum') }}
-            {% endfor %}
-          wrap: true
-          isSubtle: true
-        - type: "TextBlock"
-          text: "O workflow esta PAUSADO no AAP. Acesse as aprovacoes pendentes para aprovar ou rejeitar."
-          wrap: true
-          isSubtle: true
-          color: "Warning"
-      actions:
-        - type: "Action.OpenUrl"
-          title: "🔗 Ver aprovacoes pendentes no AAP"
-          url: "{{ aap_base_url }}/execution/administration/workflow-approvals/"
-    status_code: [200, 202]
-  when:
-    - _tickets_para_aprovacao | length > 0
-    - _tickets_com_criticos | length > 0
-    - teams_webhook_url is defined
-    - teams_webhook_url | length > 0
-  ignore_errors: true
-
-- name: "GLPI | Notificar Teams SEM criticos"
-  ansible.builtin.uri:
-    url: "{{ teams_webhook_url }}"
-    method: POST
-    body_format: json
-    body:
-      type: "AdaptiveCard"
-      version: "1.2"
-      body:
-        - type: "TextBlock"
-          text: "🔒 Aprovacao necessaria — {{ _total_tickets }} ticket(s)"
-          size: "Large"
-          weight: "Bolder"
-          color: "Attention"
-        - type: "FactSet"
-          facts:
-            - title: "Workflow Job ID:"
-              value: "{{ tower_workflow_job_id }}"
-            - title: "Total tickets:"
-              value: "{{ _total_tickets }}"
-            - title: "Pacotes criticos:"
-              value: "Nenhum detectado"
+          color: "{% if _tem_criticos %}Attention{% else %}Positive{% endif %}"
         - type: "TextBlock"
           text: "Tickets para aprovacao:"
           weight: "Bolder"
@@ -224,8 +163,16 @@
         - type: "TextBlock"
           text: |
             {% for t in _tickets_para_aprovacao %}
+            {% if t.tem_criticos %}
+            🔴 Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }})
+            Pacotes CRITICOS: {{ t.criticos | join(', ') }}
+            Demais: {{ t.nao_criticos | join(', ') | default('nenhum') }}
+            ---
+            {% else %}
             • Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }})
             Pacotes: {{ t.todos_pacotes | join(', ') | default('nenhum') }}
+            ---
+            {% endif %}
             {% endfor %}
           wrap: true
         - type: "TextBlock"
@@ -240,7 +187,6 @@
     status_code: [200, 202]
   when:
     - _tickets_para_aprovacao | length > 0
-    - _tickets_com_criticos | length == 0
     - teams_webhook_url is defined
     - teams_webhook_url | length > 0
   ignore_errors: true

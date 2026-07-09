@@ -6,8 +6,7 @@
 
 - name: "Setup — definir path"
   ansible.builtin.set_fact:
-    _workflow_id: "{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}"
-    _resultados_file: "/tmp/glpi_resultados_{{ _workflow_id }}.json"
+    _resultados_file: "/tmp/glpi_resultados_{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}.json"
 
 - name: "Ler resultados do Job 2"
   ansible.builtin.slurp:

@@ -6,9 +6,8 @@
 
 - name: "Setup — definir paths"
   ansible.builtin.set_fact:
-    _workflow_id: "{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}"
-    _criticos_file: "/tmp/glpi_criticos_{{ _workflow_id }}.json"
-    _resultados_file: "/tmp/glpi_resultados_{{ _workflow_id }}.json"
+    _criticos_file: "/tmp/glpi_aprovacao_{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}.json"
+    _resultados_file: "/tmp/glpi_resultados_{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}.json"
 
 - name: "Ler tickets criticos do Job 1"
   ansible.builtin.slurp:

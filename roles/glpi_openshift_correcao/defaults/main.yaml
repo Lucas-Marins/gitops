@@ -2,7 +2,7 @@
 # GLPI
 glpi_user: "glpi"
 glpi_pass: "glpi"
-glpi_url: "https://glpi-glpi.apps.cluster-rwmjf.dynamic.redhatworkshops.io"
+glpi_url: "https://glpi-glpi.apps.cluster-l4xtr.dynamic.redhatworkshops.io"
 glpi_search_filter: "Correção"
 
 # OpenShift

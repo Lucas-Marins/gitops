@@ -1,7 +1,9 @@
+# playbooks/glpi-workflow-snapshot-update.yml
 ---
-- name: "GLPI Workflow | Job 2 — Snapshot e Update (apos aprovacao)"
+- name: "GLPI Workflow | Job 2 — Snapshot e Update"
   hosts: localhost
   gather_facts: false
   roles:
     - role: glpi_openshift_correcao
-      tasks_from: snapshot_e_update.yml
+      vars:
+        glpi_exec_mode: "snapshot_e_update"

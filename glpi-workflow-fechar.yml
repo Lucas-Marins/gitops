@@ -1,7 +1,9 @@
+# playbooks/glpi-workflow-fechar.yml
 ---
-- name: "GLPI Workflow | Job 3 — Fechar tickets no GLPI"
+- name: "GLPI Workflow | Job 3 — Fechar tickets"
   hosts: localhost
   gather_facts: false
   roles:
     - role: glpi_openshift_correcao
-      tasks_from: fechar_no_glpi.yml
+      vars:
+        glpi_exec_mode: "fechar_no_glpi"

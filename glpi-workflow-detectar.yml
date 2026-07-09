@@ -1,7 +1,9 @@
+# playbooks/glpi-workflow-detectar.yml
 ---
 - name: "GLPI Workflow | Job 1 — Detectar e classificar tickets"
   hosts: localhost
   gather_facts: false
   roles:
     - role: glpi_openshift_correcao
-      tasks_from: detectar_e_classificar.yml
+      vars:
+        glpi_exec_mode: "detectar_e_classificar"

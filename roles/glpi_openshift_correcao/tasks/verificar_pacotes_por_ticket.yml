@@ -13,7 +13,7 @@
 
 - name: "[Ticket {{ ticket.id }}] Listar TODOS os updates de seguranca"
   ansible.builtin.shell: |
-    dnf list updates --security -q 2>/dev/null | awk 'NR>1 {print $1}'
+    dnf list updates -q 2>/dev/null | awk 'NR>1 {print $1}'
   delegate_to: "{{ _vm_ip }}"
   become: "{{ vm_become }}"
   become_user: "{{ vm_become_user }}"

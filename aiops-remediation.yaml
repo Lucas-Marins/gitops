@@ -3,8 +3,8 @@
   hosts: localhost
   gather_facts: false
   vars:
-    llm_endpoint: "https://ollama-route-aiops-llm.apps.cluster-dlpnc.dynamic.redhatworkshops.io/v1/chat/completions"
-    llm_model: "phi3:mini"
+    llm_endpoint: "https://ollama-route-aiops-llm.apps.cluster-l4xtr.dynamic.redhatworkshops.io/v1/chat/completions"
+    llm_model: "gemma2:2b"
     report_dir: "/tmp/aiops_reports"
 
   tasks:

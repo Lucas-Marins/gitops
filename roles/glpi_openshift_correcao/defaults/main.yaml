@@ -10,14 +10,14 @@ openshift_namespace: "linuxvm"
 snapshot_api_version: "snapshot.kubevirt.io/v1beta1"
 
 # Snapshot
-snapshot_prefix: "Sustentação-Vibetecnologia"
+snapshot_prefix: "glpi"
 
 # VM update
 vm_become: yes
 vm_become_user: root
 vm_ssh_timeout: 600
 
-glpi_group_name: "ansible"
+glpi_group_name: "Sustentação-Vibetecnologia"
 
 # glpi_status_open: "2"
 # glpi_page_size: 100

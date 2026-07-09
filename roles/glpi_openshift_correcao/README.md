@@ -61,44 +61,45 @@ Chama a role no modo `detectar_e_classificar`.
 
 ```yaml
 ---
+# playbooks/glpi-workflow-detectar.yml
+---
 - name: "GLPI Workflow | Job 1 — Detectar e classificar tickets"
   hosts: localhost
   gather_facts: false
-  vars_files:
-    - roles/glpi_openshift_correcao/defaults/main.yml
-  tasks:
-    - name: "Executar detectar e classificar"
-      ansible.builtin.include_tasks: roles/glpi_openshift_correcao/tasks/detectar_e_classificar.yml
+  roles:
+    - role: glpi_openshift_correcao
+      vars:
+        glpi_exec_mode: "detectar_e_classificar"
 ```
 
 ### glpi-workflow-snapshot-update.yml
 Chama a role no modo `snapshot_e_update`.
 
 ```yaml
+# playbooks/glpi-workflow-snapshot-update.yml
 ---
 - name: "GLPI Workflow | Job 2 — Snapshot e Update"
   hosts: localhost
   gather_facts: false
-  vars_files:
-    - roles/glpi_openshift_correcao/defaults/main.yml
-  tasks:
-    - name: "Executar snapshot e update"
-      ansible.builtin.include_tasks: roles/glpi_openshift_correcao/tasks/snapshot_e_update.yml
+  roles:
+    - role: glpi_openshift_correcao
+      vars:
+        glpi_exec_mode: "snapshot_e_update"
 ```
 
 ### glpi-workflow-fechar.yml
 Chama a role no modo `fechar_no_glpi`.
 
 ```yaml
+# playbooks/glpi-workflow-fechar.yml
 ---
 - name: "GLPI Workflow | Job 3 — Fechar tickets"
   hosts: localhost
   gather_facts: false
-  vars_files:
-    - roles/glpi_openshift_correcao/defaults/main.yml
-  tasks:
-    - name: "Executar fechar no GLPI"
-      ansible.builtin.include_tasks: roles/glpi_openshift_correcao/tasks/fechar_no_glpi.yml
+  roles:
+    - role: glpi_openshift_correcao
+      vars:
+        glpi_exec_mode: "fechar_no_glpi"
 ```
 
 ---

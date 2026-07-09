@@ -79,7 +79,7 @@
               content: "Voce e um engenheiro SRE senior. Responda apenas no formato solicitado."
             - role: user
               content: |
-                Analise o incidente e responda EXATAMENTE no formato:
+                Analise o incidente e responda EXATAMENTE no formato, e se possível coloque playbook que poderia resolver este problema:
 
                 CAUSA_RAIZ: <diagnostico>
                 CONFIANCA: <alta/media/baixa>
@@ -143,23 +143,28 @@
         ai_prevencao: "Configurar probes e resource limits adequados."
       when: not llm_available
 
+    # - name: Mostrar diagnostico
+    #   ansible.builtin.debug:
+    #     msg: |
+    #       ============================================================
+    #       {% if llm_available %}DIAGNOSTICO DA IA{% else %}DIAGNOSTICO FALLBACK{% endif %}
+    #       ============================================================
+    #       CAUSA RAIZ:  {{ ai_causa_raiz }}
+    #       CONFIANCA:   {{ ai_confianca }}
+    #       ------------------------------------------------------------
+    #       SOLUCAO:
+    #       {{ ai_solucao }}
+    #       ------------------------------------------------------------
+    #       COMANDO:
+    #       {{ ai_comando }}
+    #       ------------------------------------------------------------
+    #       PREVENCAO:
+    #       {{ ai_prevencao }}
+
     - name: Mostrar diagnostico
       ansible.builtin.debug:
         msg: |
-          ============================================================
-          {% if llm_available %}DIAGNOSTICO DA IA{% else %}DIAGNOSTICO FALLBACK{% endif %}
-          ============================================================
-          CAUSA RAIZ:  {{ ai_causa_raiz }}
-          CONFIANCA:   {{ ai_confianca }}
-          ------------------------------------------------------------
-          SOLUCAO:
-          {{ ai_solucao }}
-          ------------------------------------------------------------
-          COMANDO:
-          {{ ai_comando }}
-          ------------------------------------------------------------
-          PREVENCAO:
-          {{ ai_prevencao }}
+           {{ ai_raw_response }}
 
     - name: Salvar relatorio
       ansible.builtin.copy:

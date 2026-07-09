@@ -2,7 +2,7 @@
 # ═══════════════════════════════════════════════════════════
 # JOB 1: Busca tickets, lista TODOS os pacotes,
 # envia card no Teams com aprovação + destaque nos críticos,
-# salva JSON para o Job 2 executar apos aprovacao.
+# passa dados para Job 2 via set_stats.
 # ═══════════════════════════════════════════════════════════
 
 - name: "GLPI | Iniciar sessao"
@@ -78,7 +78,6 @@
       status: "{{ item.json.status | default('') }}"
   loop: "{{ _ticket_details.results }}"
   register: _ticket_items
-  
 
 - name: "GLPI | Consolidar tickets"
   ansible.builtin.set_fact:
@@ -120,20 +119,16 @@
   ansible.builtin.debug:
     msg: "Total: {{ _total_tickets }} | Com criticos: {{ _tickets_com_criticos | length }} | Sem criticos: {{ _tickets_sem_criticos | length }}"
 
-# ── 9. SALVAR TODOS EM JSON PARA O JOB 2 ──
-- name: "GLPI | Definir ID do workflow"
-  ansible.builtin.set_fact:
-    _workflow_id: "{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}"
-
-- name: "GLPI | Salvar tickets para aprovacao em JSON"
-  ansible.builtin.copy:
-    dest: "/tmp/glpi_aprovacao_{{ _workflow_id }}.json"
-    content: "{{ _tickets_para_aprovacao | to_nice_json }}"
+# ── 9. PASSAR DADOS PARA O JOB 2 VIA SET_STATS ──
+- name: "GLPI | Passar tickets para aprovacao via set_stats"
+  ansible.builtin.set_stats:
+    data:
+      glpi_tickets_para_aprovacao: "{{ _tickets_para_aprovacao }}"
+      glpi_total_tickets: "{{ _total_tickets }}"
+      glpi_tickets_com_criticos: "{{ _tickets_com_criticos | length }}"
   when: _tickets_para_aprovacao | length > 0
 
 # ── 10. NOTIFICAR TEAMS VIA POWER AUTOMATE ──
-# Se houver criticos: envia aprovacao + detalhes dos criticos
-# Se NAO houver criticos: envia aprovacao simples
 - name: "GLPI | Notificar Teams COM criticos"
   ansible.builtin.uri:
     url: "{{ teams_webhook_url }}"
@@ -150,8 +145,8 @@
           color: "Attention"
         - type: "FactSet"
           facts:
-            - title: "Workflow:"
-              value: "{{ _workflow_id }}"
+            - title: "Workflow Job ID:"
+              value: "{{ tower_workflow_job_id }}"
             - title: "Total tickets:"
               value: "{{ _total_tickets }}"
             - title: "Com criticos:"
@@ -184,13 +179,13 @@
           wrap: true
           isSubtle: true
         - type: "TextBlock"
-          text: "O workflow esta PAUSADO no AAP. Clique para aprovar ou rejeitar."
+          text: "O workflow esta PAUSADO no AAP. Acesse as aprovacoes pendentes para aprovar ou rejeitar."
           wrap: true
           isSubtle: true
           color: "Warning"
       actions:
         - type: "Action.OpenUrl"
-          title: "🔗 Aprovar / Rejeitar no AAP"
+          title: "🔗 Ver aprovacoes pendentes no AAP"
           url: "{{ aap_base_url }}/execution/administration/workflow-approvals/"
     status_code: [200, 202]
   when:
@@ -216,8 +211,8 @@
           color: "Attention"
         - type: "FactSet"
           facts:
-            - title: "Workflow:"
-              value: "{{ _workflow_id }}"
+            - title: "Workflow Job ID:"
+              value: "{{ tower_workflow_job_id }}"
             - title: "Total tickets:"
               value: "{{ _total_tickets }}"
             - title: "Pacotes criticos:"
@@ -234,13 +229,13 @@
             {% endfor %}
           wrap: true
         - type: "TextBlock"
-          text: "O workflow esta PAUSADO no AAP. Clique para aprovar ou rejeitar."
+          text: "O workflow esta PAUSADO no AAP. Acesse as aprovacoes pendentes para aprovar ou rejeitar."
           wrap: true
           isSubtle: true
           color: "Warning"
       actions:
         - type: "Action.OpenUrl"
-          title: "🔗 Aprovar / Rejeitar no AAP"
+          title: "🔗 Ver aprovacoes pendentes no AAP"
           url: "{{ aap_base_url }}/execution/administration/workflow-approvals/"
     status_code: [200, 202]
   when:

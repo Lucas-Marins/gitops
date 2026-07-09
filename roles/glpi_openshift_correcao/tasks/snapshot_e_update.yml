@@ -1,34 +1,28 @@
 ---
 # ═══════════════════════════════════════════════════════════
-# JOB 2: Le os tickets criticos salvos pelo Job 1, cria
-# snapshot e executa dnf update --security para cada um.
+# JOB 2: Recebe dados do Job 1 via set_stats, cria snapshot
+# e executa dnf update --security para cada ticket.
 # ═══════════════════════════════════════════════════════════
 
-- name: "Setup — definir paths"
+- name: "Receber dados do Job 1"
   ansible.builtin.set_fact:
-    _criticos_file: "/tmp/glpi_aprovacao_{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}.json"
-    _resultados_file: "/tmp/glpi_resultados_{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}.json"
+    _tickets_criticos: "{{ glpi_tickets_para_aprovacao }}"
 
-- name: "Ler tickets criticos do Job 1"
-  ansible.builtin.slurp:
-    src: "{{ _criticos_file }}"
-  register: _slurp
-
-- name: "Parsear JSON de criticos"
-  ansible.builtin.set_fact:
-    _tickets_criticos: "{{ (_slurp.content | b64decode | from_json) }}"
+- name: "Debug — tickets recebidos"
+  ansible.builtin.debug:
+    msg: "Tickets recebidos: {{ _tickets_criticos | length }}"
 
 - name: "Inicializar lista de resultados"
   ansible.builtin.set_fact:
     _resultados: []
 
-- name: "Processar cada ticket critico (snapshot + update)"
+- name: "Processar cada ticket (snapshot + update)"
   ansible.builtin.include_tasks: snapshot_update_single.yml
   loop: "{{ _tickets_criticos }}"
   loop_control:
     loop_var: ticket
 
-- name: "Salvar resultados em JSON para o Job 3"
-  ansible.builtin.copy:
-    dest: "{{ _resultados_file }}"
-    content: "{{ _resultados | to_nice_json }}"
+- name: "Passar resultados para o Job 3 via set_stats"
+  ansible.builtin.set_stats:
+    data:
+      glpi_resultados: "{{ _resultados }}"

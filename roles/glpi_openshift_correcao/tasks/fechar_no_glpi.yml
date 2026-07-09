@@ -1,21 +1,12 @@
 ---
 # ═══════════════════════════════════════════════════════════
-# JOB 3: Le os resultados do Job 2, adiciona follow-up e
-# fecha os tickets no GLPI (apenas os que tiveram sucesso).
+# JOB 3: Recebe resultados do Job 2 via set_stats, adiciona
+# follow-up e fecha os tickets no GLPI (apenas sucessos).
 # ═══════════════════════════════════════════════════════════
 
-- name: "Setup — definir path"
+- name: "Receber resultados do Job 2"
   ansible.builtin.set_fact:
-    _resultados_file: "/tmp/glpi_resultados_{{ tower_workflow_job_id | default(lookup('pipe', 'date +%s')) }}.json"
-
-- name: "Ler resultados do Job 2"
-  ansible.builtin.slurp:
-    src: "{{ _resultados_file }}"
-  register: _slurp
-
-- name: "Parsear JSON de resultados"
-  ansible.builtin.set_fact:
-    _resultados: "{{ (_slurp.content | b64decode | from_json) }}"
+    _resultados: "{{ glpi_resultados }}"
 
 - name: "Filtrar apenas os que tiveram sucesso"
   ansible.builtin.set_fact:

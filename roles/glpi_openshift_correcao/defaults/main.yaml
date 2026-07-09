@@ -10,7 +10,7 @@ openshift_namespace: "linuxvm"
 snapshot_api_version: "snapshot.kubevirt.io/v1beta1"
 
 # Snapshot
-snapshot_prefix: "glpi"
+snapshot_prefix: "Sustentação-Vibetecnologia"
 
 # VM update
 vm_become: yes

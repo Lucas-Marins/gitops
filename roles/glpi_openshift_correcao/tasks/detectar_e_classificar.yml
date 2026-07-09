@@ -112,9 +112,9 @@
 - name: "GLPI | Contar tickets com criticos"
   ansible.builtin.set_fact:
     _total_tickets: "{{ _tickets_para_aprovacao | length }}"
-    _tickets_com_criticos: "{{ _tickets_para_aprovacao | selectattr('tem_criticos', 'equalto', true) | list }}"
-    _tickets_sem_criticos: "{{ _tickets_para_aprovacao | selectattr('tem_criticos', 'equalto', false) | list }}"
-    _tem_criticos: "{{ _tickets_com_criticos | length > 0 }}"
+    _tickets_com_criticos: "{{ _tickets_para_aprovacao | default([]) | selectattr('tem_criticos', 'equalto', true) | list }}"
+    _tickets_sem_criticos: "{{ _tickets_para_aprovacao | default([]) | selectattr('tem_criticos', 'equalto', false) | list }}"
+    _tem_criticos: "{{ (_tickets_para_aprovacao | default([]) | selectattr('tem_criticos', 'equalto', true) | list) | length > 0 }}"
 
 - name: "GLPI | Debug — resumo"
   ansible.builtin.debug:

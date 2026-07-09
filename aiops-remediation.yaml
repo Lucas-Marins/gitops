@@ -79,11 +79,11 @@
               content: "Voce e um engenheiro SRE senior. Responda apenas no formato solicitado."
             - role: user
               content: |
-                Analise o incidente e responda EXATAMENTE no formato, e se possível coloque playbook que poderia resolver este problema:
+                Analise o incidente e responda EXATAMENTE no formato:
 
                 CAUSA_RAIZ: <diagnostico>
                 CONFIANCA: <alta/media/baixa>
-                SOLUCAO: <passo a passo>
+                SOLUCAO: <passo a passo e me forneça o comando exato para executar com playbooks de ansible>
                 COMANDO: <comando oc/kubectl>
                 PREVENCAO: <como evitar>
 

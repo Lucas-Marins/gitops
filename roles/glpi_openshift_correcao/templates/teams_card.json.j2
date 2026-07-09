@@ -4,7 +4,7 @@
   "body": [
     {
       "type": "TextBlock",
-      "text": "{% if tem_criticos %}🔒 Aprovacao necessaria — {{ total_tickets }} ticket(s) — ⚠️ {{ tickets_com_criticos }} CRITICO(S){% else %}🔒 Aprovacao necessaria — {{ total_tickets }} ticket(s){% endif %}",
+      "text": "{% if tem_criticos %}🔒 Aprovacao necessaria — {{ total_tickets }} ticket(s) {% else %}🔒 Aprovacao necessaria — {{ total_tickets }} ticket(s){% endif %}",
       "size": "Large",
       "weight": "Bolder",
       "color": "{% if tem_criticos %}Attention{% else %}Accent{% endif %}"

@@ -129,61 +129,35 @@
       glpi_tickets_com_criticos: "{{ _tickets_com_criticos | length }}"
   when: _tickets_para_aprovacao | length > 0
 
-# ── 10. NOTIFICAR TEAMS VIA POWER AUTOMATE (UNICO CARD) ──
-- name: "GLPI | Notificar Teams — aguardando aprovacao"
+# ── 10. RENDERIZAR TEMPLATE DO CARD ──
+- name: "GLPI | Renderizar template do card"
+  ansible.builtin.template:
+    src: teams_card.json.j2
+    dest: /tmp/glpi_card_{{ tower_workflow_job_id }}.json
+  vars:
+    tem_criticos: "{{ _tem_criticos }}"
+    total_tickets: "{{ _total_tickets }}"
+    tickets_com_criticos: "{{ _tickets_com_criticos | length }}"
+    workflow_job_id: "{{ tower_workflow_job_id }}"
+    tickets: "{{ _tickets_para_aprovacao }}"
+    aap_base_url: "{{ aap_base_url }}"
+
+- name: "GLPI | Ler card renderizado"
+  ansible.builtin.slurp:
+    src: /tmp/glpi_card_{{ tower_workflow_job_id }}.json
+  register: _card_file
+
+- name: "GLPI | Parsear card JSON"
+  ansible.builtin.set_fact:
+    _card_body: "{{ (_card_file.content | b64decode | from_json) }}"
+
+# ── 11. ENVIAR CARD PARA O POWER AUTOMATE ──
+- name: "GLPI | Enviar card para Teams via Power Automate"
   ansible.builtin.uri:
     url: "{{ teams_webhook_url }}"
     method: POST
     body_format: json
-    body:
-      type: "AdaptiveCard"
-      version: "1.2"
-      body:
-        - type: "TextBlock"
-          text: "{% if _tem_criticos %}🔒 Aprovacao necessaria — {{ _total_tickets }} ticket(s) — ⚠️ {{ _tickets_com_criticos | length }} CRITICO(S){% else %}🔒 Aprovacao necessaria — {{ _total_tickets }} ticket(s){% endif %}"
-          size: "Large"
-          weight: "Bolder"
-          color: "{% if _tem_criticos %}Attention{% else %}Accent{% endif %}"
-        - type: "FactSet"
-          facts:
-            - title: "Workflow Job ID:"
-              value: "{{ tower_workflow_job_id }}"
-            - title: "Total tickets:"
-              value: "{{ _total_tickets }}"
-            - title: "Com criticos:"
-              value: "{{ _tickets_com_criticos | length }}"
-        - type: "TextBlock"
-          text: "{% if _tem_criticos %}⚠️ ATENCAO: {{ _tickets_com_criticos | length }} ticket(s) contem pacotes CRITICOS. Requer analise cuidadosa antes da aprovacao.{% else %}✅ Nenhum pacote critico detectado. Todos os tickets sao seguros para atualizacao.{% endif %}"
-          wrap: true
-          color: "{% if _tem_criticos %}Attention{% else %}Positive{% endif %}"
-        - type: "TextBlock"
-          text: "Tickets para aprovacao:"
-          weight: "Bolder"
-          size: "Medium"
-        - type: "TextBlock"
-          text: |
-            {% for t in _tickets_para_aprovacao %}
-            {% if t.tem_criticos %}
-            🔴 Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }})
-            Pacotes CRITICOS: {{ t.criticos | join(', ') }}
-            Demais: {{ t.nao_criticos | join(', ') | default('nenhum') }}
-            ---
-            {% else %}
-            • Ticket #{{ t.id }} | VM: {{ t.vm_name }} ({{ t.vm_ip }})
-            Pacotes: {{ t.todos_pacotes | join(', ') | default('nenhum') }}
-            ---
-            {% endif %}
-            {% endfor %}
-          wrap: true
-        - type: "TextBlock"
-          text: "O workflow esta PAUSADO no AAP. Acesse as aprovacoes pendentes para aprovar ou rejeitar."
-          wrap: true
-          isSubtle: true
-          color: "Warning"
-      actions:
-        - type: "Action.OpenUrl"
-          title: "🔗 Ver aprovacoes pendentes no AAP"
-          url: "{{ aap_base_url }}/execution/administration/workflow-approvals/"
+    body: "{{ _card_body }}"
     status_code: [200, 202]
   when:
     - _tickets_para_aprovacao | length > 0
@@ -191,7 +165,7 @@
     - teams_webhook_url | length > 0
   ignore_errors: true
 
-# ── 11. ENCERRAR SESSAO GLPI ──
+# ── 12. ENCERRAR SESSAO GLPI ──
 - name: "GLPI | Encerrar sessao"
   ansible.builtin.uri:
     url: "{{ glpi_url }}/apirest.php/killSession"

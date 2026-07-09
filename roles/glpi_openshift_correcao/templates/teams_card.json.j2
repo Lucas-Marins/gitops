@@ -1,0 +1,66 @@
+{
+  "type": "AdaptiveCard",
+  "version": "1.2",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "{% if tem_criticos %}🔒 Aprovacao necessaria — {{ total_tickets }} ticket(s) — ⚠️ {{ tickets_com_criticos }} CRITICO(S){% else %}🔒 Aprovacao necessaria — {{ total_tickets }} ticket(s){% endif %}",
+      "size": "Large",
+      "weight": "Bolder",
+      "color": "{% if tem_criticos %}Attention{% else %}Accent{% endif %}"
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        {"title": "Workflow Job ID:", "value": "{{ workflow_job_id }}"},
+        {"title": "Total tickets:", "value": "{{ total_tickets }}"},
+        {"title": "Com criticos:", "value": "{{ tickets_com_criticos }}"}
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "{% if tem_criticos %}⚠️ ATENCAO: {{ tickets_com_criticos }} ticket(s) contem pacotes CRITICOS. Requer analise cuidadosa antes da aprovacao.{% else %}✅ Nenhum pacote critico detectado. Todos os tickets sao seguros para atualizacao.{% endif %}",
+      "wrap": true,
+      "color": "{% if tem_criticos %}Attention{% else %}Good{% endif %}",
+      "spacing": "Medium"
+    },
+    {
+      "type": "TextBlock",
+      "text": "Tickets para aprovacao:",
+      "weight": "Bolder",
+      "size": "Medium",
+      "spacing": "Large"
+    }
+{% for ticket in tickets %}
+    ,{
+      "type": "TextBlock",
+      "text": "{% if ticket.tem_criticos %}🔴 CRITICO{% else %}✅ Seguro{% endif %} — Ticket #{{ ticket.id }} | VM: {{ ticket.vm_name }} ({{ ticket.vm_ip }})",
+      "weight": "Bolder",
+      "color": "{% if ticket.tem_criticos %}Attention{% else %}Good{% endif %}",
+      "size": "Medium",
+      "spacing": "Medium"
+    }
+    ,{
+      "type": "FactSet",
+      "facts": [
+        {"title": "Pacotes:", "value": "{% if ticket.tem_criticos %}{{ ticket.criticos | join(', ') }}{% else %}{{ ticket.todos_pacotes | join(', ') | default('nenhum') }}{% endif %}"}
+      ]
+    }
+{% endfor %}
+    ,{
+      "type": "TextBlock",
+      "text": "O workflow esta PAUSADO no AAP. Acesse as aprovacoes pendentes para aprovar ou rejeitar.",
+      "wrap": true,
+      "isSubtle": true,
+      "color": "Warning",
+      "spacing": "Large"
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.OpenUrl",
+      "title": "🔗 Ver aprovacoes pendentes no AAP",
+      "url": "{{ aap_base_url }}/execution/administration/workflow-approvals/"
+    }
+  ]
+}

@@ -97,6 +97,7 @@
     msg: "Nenhum ticket com status 'Em atendimento' (2) encontrado no grupo {{ glpi_group_name }}."
   when: glpi_tickets_processar | length == 0
 
+
 # ── 7. VERIFICAR PACOTES POR TICKET ──
 - name: "GLPI | Inicializar lista de aprovacao"
   ansible.builtin.set_fact:

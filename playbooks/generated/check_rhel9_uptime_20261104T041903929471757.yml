@@ -1,5 +1,0 @@
--   command: uptime
-    name: Get system uptime
-    register: uptime_result
--   debug:
-        var: uptime_result.stdout

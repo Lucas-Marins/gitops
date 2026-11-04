@@ -11,6 +11,7 @@
     github_raw: "https://raw.githubusercontent.com/Lucas-Marins/gitops/ansible"
     runtime_file: "/tmp/ai-generated-tasks.yml"
     source_file: "/tmp/ai-source-tasks.yml"
+    catalog_file: "automation-catalog.yml"
 
   tasks:
 
@@ -59,12 +60,17 @@
     # GENERATE NEW AUTOMATION
     # =====================================================
 
-    - name: Validate generated YAML
+    - name: Validate generated automation
       ansible.builtin.assert:
         that:
           - tasks_yaml is defined
           - tasks_yaml | length > 0
-        fail_msg: "AI generated YAML was not provided."
+          - automation_id is defined
+          - automation_id | length > 0
+          - automation_id != 'new_automation_id'
+          - summary is defined
+          - summary | length > 0
+        fail_msg: "Generated automation is missing required information."
       when: automation_action == 'generate'
 
     - name: Load generated YAML content
@@ -113,9 +119,11 @@
     - name: Prepare normalized YAML
       ansible.builtin.set_fact:
         normalized_tasks_yaml: >-
-          {{ normalized_ai_tasks
-             | to_nice_yaml
-             | replace('.output', '.stdout') }}
+          {{
+            normalized_ai_tasks
+            | to_nice_yaml
+            | replace('.output', '.stdout')
+          }}
 
     - name: Save automation for execution
       ansible.builtin.copy:
@@ -124,10 +132,10 @@
         mode: "0600"
 
     # =====================================================
-    # PUBLISH ONLY WHEN GENERATING NEW AUTOMATION
+    # GENERATE UNIQUE FILENAME
     # =====================================================
 
-    - name: Generate unique filename
+    - name: Generate filename base
       ansible.builtin.set_fact:
         filename_base: >-
           {{
@@ -137,15 +145,70 @@
           }}
       when: automation_action == 'generate'
 
-    - name: Prepare generated filename
+    - name: Generate unique filename
       ansible.builtin.set_fact:
         generated_filename: >-
           {{ filename_base }}_{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%S%N') }}.yml
       when: automation_action == 'generate'
 
+    - name: Define generated GitHub path
+      ansible.builtin.set_fact:
+        generated_github_path: "playbooks/generated/{{ generated_filename }}"
+      when: automation_action == 'generate'
+
+    # =====================================================
+    # READ EXISTING AUTOMATION CATALOG
+    # =====================================================
+
+    - name: Read automation catalog from GitHub
+      ansible.builtin.uri:
+        url: "{{ github_api }}/contents/{{ catalog_file }}?ref={{ github_branch }}"
+        method: GET
+        headers:
+          Accept: "application/vnd.github+json"
+          Authorization: "Bearer {{ github_token }}"
+          X-GitHub-Api-Version: "2022-11-28"
+        return_content: true
+        status_code: 200
+      register: catalog_response
+      no_log: true
+      when: automation_action == 'generate'
+
+    - name: Decode automation catalog
+      ansible.builtin.set_fact:
+        catalog_sha: "{{ catalog_response.json.sha }}"
+        catalog_data: "{{ catalog_response.json.content | b64decode | from_yaml }}"
+      when: automation_action == 'generate'
+
+    - name: Validate catalog structure
+      ansible.builtin.assert:
+        that:
+          - catalog_data is mapping
+          - catalog_data.automations is defined
+          - catalog_data.automations is sequence
+        fail_msg: "The GitHub automation catalog has an unexpected YAML structure."
+      when: automation_action == 'generate'
+
+    - name: Check whether automation ID already exists
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              catalog_data.automations
+              | selectattr('id', 'equalto', automation_id)
+              | list
+              | length
+            ) == 0
+        fail_msg: "This automation ID already exists in the catalog. Generate a different automation_id."
+      when: automation_action == 'generate'
+
+    # =====================================================
+    # PUBLISH NEW AUTOMATION FILE TO GITHUB
+    # =====================================================
+
     - name: Publish new automation to GitHub
       ansible.builtin.uri:
-        url: "{{ github_api }}/contents/playbooks/generated/{{ generated_filename }}"
+        url: "{{ github_api }}/contents/{{ generated_github_path }}"
         method: PUT
         headers:
           Accept: "application/vnd.github+json"
@@ -162,13 +225,70 @@
       no_log: true
       when: automation_action == 'generate'
 
+    # =====================================================
+    # CREATE NEW CATALOG ENTRY
+    # =====================================================
+
+    - name: Create new automation catalog entry
+      ansible.builtin.set_fact:
+        new_catalog_entry:
+          id: "{{ automation_id }}"
+          name: "{{ automation_id | replace('_', ' ') | title }}"
+          description: "{{ summary }}"
+          type: "ansible_tasks"
+          file: "{{ generated_github_path }}"
+          created_by: "ai_task_agent"
+      when: automation_action == 'generate'
+
+    - name: Add automation to catalog
+      ansible.builtin.set_fact:
+        updated_catalog: >-
+          {{
+            catalog_data
+            | combine({
+                'automations':
+                  catalog_data.automations + [new_catalog_entry]
+              })
+          }}
+      when: automation_action == 'generate'
+
+    # =====================================================
+    # PUBLISH UPDATED CATALOG TO GITHUB
+    # =====================================================
+
+    - name: Publish updated automation catalog to GitHub
+      ansible.builtin.uri:
+        url: "{{ github_api }}/contents/{{ catalog_file }}"
+        method: PUT
+        headers:
+          Accept: "application/vnd.github+json"
+          Authorization: "Bearer {{ github_token }}"
+          X-GitHub-Api-Version: "2022-11-28"
+        body_format: json
+        body:
+          message: "Add automation {{ automation_id }} to catalog"
+          content: "{{ updated_catalog | to_nice_yaml(indent=2, sort_keys=false) | b64encode }}"
+          sha: "{{ catalog_sha }}"
+          branch: "{{ github_branch }}"
+        status_code: 200
+        return_content: true
+      register: catalog_publish_response
+      no_log: true
+      when: automation_action == 'generate'
+
+    # =====================================================
+    # REPORT AUTOMATION SELECTION
+    # =====================================================
+
     - name: Report automation selection
       ansible.builtin.debug:
         msg: >-
           {{
             'Reusing existing automation: ' ~ automation_file
             if automation_action == 'reuse'
-            else 'Created and published: ' ~ generated_filename
+            else
+            'Created automation: ' ~ generated_github_path
+            ~ '. Automation catalog successfully updated.'
           }}
 
 # =========================================================

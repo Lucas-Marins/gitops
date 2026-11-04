@@ -1,0 +1,19 @@
+
+---
+version: 1
+
+automations:
+
+  - id: linux_filesystem_audit
+    name: Linux Filesystem Audit
+    description: Check Linux filesystem utilization and report disk usage.
+    type: ansible_tasks
+    file: playbooks/generated/filesystem_utilization_check_20261104T035429838610621.yml
+    capabilities:
+      - linux
+      - rhel
+      - disk
+      - filesystem
+      - disk_usage
+      - diagnostics
+    created_by: ai_task_agent

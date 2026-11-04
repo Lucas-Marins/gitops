@@ -26,7 +26,7 @@
       - -x
       - -h
       - --max-depth=1
-      - /home/ansible-ai
+      - /home/devops
   register: directory_usage
   changed_when: false
 

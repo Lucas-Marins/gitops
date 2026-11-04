@@ -15,7 +15,40 @@
           - webhook_client_secret is defined
           - webhook_path is defined
           - event_payload is defined
-        fail_msg: "Missing Orchestrator integration parameters."
+          - event_payload.item is defined
+          - event_payload.item.id is defined
+          - event_payload.item.content is defined
+        fail_msg: "Missing Orchestrator integration parameters or GLPI ticket data."
+
+    - name: Extract automation request from GLPI description
+      ansible.builtin.set_fact:
+        automation_request: >-
+          {{
+            event_payload.item.content
+            | regex_replace('(?i)<br\s*/?>', ' ')
+            | regex_replace('(?i)</p\s*>', ' ')
+            | regex_replace('<[^>]+>', ' ')
+            | regex_replace('&nbsp;|&#160;', ' ')
+            | regex_replace('\s+', ' ')
+            | trim
+          }}
+
+    - name: Validate automation request
+      ansible.builtin.assert:
+        that:
+          - automation_request | length > 0
+        fail_msg: "The GLPI ticket description does not contain an automation request."
+
+    - name: Build standardized Orchestrator payload
+      ansible.builtin.set_fact:
+        orchestrator_payload:
+          source: "glpi"
+          automation_request: "{{ automation_request }}"
+          glpi:
+            ticket_id: "{{ event_payload.item.id }}"
+            ticket_title: "{{ event_payload.item.name | default('') }}"
+            event: "{{ event_payload.event | default('new') }}"
+            requester: "{{ event_payload.item.user_recipient.name | default('unknown') }}"
 
     - name: Obtain Orchestrator service account token
       ansible.builtin.uri:
@@ -29,8 +62,9 @@
         status_code: 200
         return_content: true
       register: token_response
+      no_log: true
 
-    - name: Send GLPI event to Orchestrator EDA trigger
+    - name: Send normalized GLPI event to Orchestrator
       ansible.builtin.uri:
         url: "{{ webhook_base_url }}/api/v1/webhooks/eda/{{ webhook_path }}"
         method: POST
@@ -38,14 +72,17 @@
         headers:
           Authorization: "Bearer {{ token_response.json.access_token }}"
           Content-Type: application/json
-        body: "{{ event_payload }}"
+        body: "{{ orchestrator_payload }}"
         status_code: 202
         return_content: true
       register: webhook_response
+      no_log: true
 
     - name: Display Orchestrator execution information
       ansible.builtin.debug:
         msg: >-
           Orchestrator workflow started.
+          GLPI Ticket ID: {{ event_payload.item.id }}
+          Automation Request: {{ automation_request }}
           Execution ID:
           {{ webhook_response.json.execution_id | default('Accepted') }}

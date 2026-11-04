@@ -1,0 +1,41 @@
+---
+- name: Execute approved generated Ansible tasks
+  hosts: all
+  gather_facts: true
+  become: false
+  serial: 1
+
+  pre_tasks:
+
+    - name: Validate generated task filename
+      ansible.builtin.assert:
+        that:
+          - generated_task_file is defined
+          - (generated_task_file | default('')) is match('^[a-z0-9][a-z0-9_-]{0,63}[.]yml$')
+        fail_msg: >-
+          You must provide a valid generated task filename.
+          Only lowercase letters, numbers, underscores and hyphens are allowed.
+
+      run_once: true
+
+    - name: Verify generated task file exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/generated/{{ generated_task_file }}"
+      delegate_to: localhost
+      run_once: true
+      register: generated_task_stat
+
+    - name: Validate generated task file availability
+      ansible.builtin.assert:
+        that:
+          - generated_task_stat.stat.exists | default(false)
+          - generated_task_stat.stat.isreg | default(false)
+        fail_msg: "Generated task file does not exist in the repository."
+
+      run_once: true
+
+  tasks:
+
+    - name: Execute approved generated tasks
+      ansible.builtin.include_tasks:
+        file: "generated/{{ generated_task_file }}"

@@ -1,0 +1,45 @@
+---
+- name: Check root filesystem utilization
+  ansible.builtin.command:
+    argv:
+      - df
+      - -P
+      - /
+  register: root_filesystem
+  changed_when: false
+
+- name: Calculate root filesystem utilization
+  ansible.builtin.set_fact:
+    root_usage_percent: >-
+      {{ root_filesystem.stdout_lines[1].split()[4]
+         | regex_replace('%', '')
+         | int }}
+
+- name: Display root filesystem utilization
+  ansible.builtin.debug:
+    msg: "Root filesystem utilization: {{ root_usage_percent }}%"
+
+- name: Identify directories consuming disk space
+  ansible.builtin.command:
+    argv:
+      - du
+      - -x
+      - -h
+      - --max-depth=1
+      - /home/ansible-ai
+  register: directory_usage
+  changed_when: false
+
+- name: Display directory usage
+  ansible.builtin.debug:
+    var: directory_usage.stdout_lines
+
+- name: Report high disk utilization
+  ansible.builtin.debug:
+    msg: "WARNING: Root filesystem utilization is above 80%."
+  when: root_usage_percent | int >= 80
+
+- name: Report normal disk utilization
+  ansible.builtin.debug:
+    msg: "Root filesystem utilization is within the expected threshold."
+  when: root_usage_percent | int < 80

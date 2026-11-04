@@ -1,6 +1,6 @@
 
 ---
-- name: Publish AI generated Ansible tasks to GitHub
+- name: Prepare AI generated or reused automation
   hosts: localhost
   connection: local
   gather_facts: false
@@ -8,12 +8,77 @@
   vars:
     github_api: "https://api.github.com/repos/Lucas-Marins/gitops"
     github_branch: "ansible"
+    github_raw: "https://raw.githubusercontent.com/Lucas-Marins/gitops/ansible"
+    runtime_file: "/tmp/ai-generated-tasks.yml"
+    source_file: "/tmp/ai-source-tasks.yml"
 
   tasks:
 
-    - name: Parse AI generated YAML
+    - name: Validate automation action
+      ansible.builtin.assert:
+        that:
+          - automation_action in ['reuse', 'generate']
+        fail_msg: "Unknown automation action."
+
+    - name: Define runtime file
       ansible.builtin.set_fact:
-        parsed_tasks: "{{ tasks_yaml | from_yaml }}"
+        generated_runtime_file: "{{ runtime_file }}"
+
+    # =====================================================
+    # REUSE EXISTING AUTOMATION
+    # =====================================================
+
+    - name: Validate existing automation path
+      ansible.builtin.assert:
+        that:
+          - automation_file is defined
+          - automation_file | length > 0
+        fail_msg: "Automation file was not provided."
+      when: automation_action == 'reuse'
+
+    - name: Download existing automation from GitHub
+      ansible.builtin.get_url:
+        url: "{{ github_raw }}/{{ automation_file }}"
+        dest: "{{ source_file }}"
+        mode: "0600"
+        force: true
+      when: automation_action == 'reuse'
+
+    - name: Read existing automation
+      ansible.builtin.slurp:
+        src: "{{ source_file }}"
+      register: reused_file
+      when: automation_action == 'reuse'
+
+    - name: Load reused YAML content
+      ansible.builtin.set_fact:
+        source_tasks_yaml: "{{ reused_file.content | b64decode }}"
+      when: automation_action == 'reuse'
+
+    # =====================================================
+    # GENERATE NEW AUTOMATION
+    # =====================================================
+
+    - name: Validate generated YAML
+      ansible.builtin.assert:
+        that:
+          - tasks_yaml is defined
+          - tasks_yaml | length > 0
+        fail_msg: "AI generated YAML was not provided."
+      when: automation_action == 'generate'
+
+    - name: Load generated YAML content
+      ansible.builtin.set_fact:
+        source_tasks_yaml: "{{ tasks_yaml }}"
+      when: automation_action == 'generate'
+
+    # =====================================================
+    # COMMON TASK NORMALIZATION
+    # =====================================================
+
+    - name: Parse automation YAML
+      ansible.builtin.set_fact:
+        parsed_tasks: "{{ source_tasks_yaml | from_yaml }}"
 
     - name: Extract task list
       ansible.builtin.set_fact:
@@ -45,6 +110,23 @@
       loop_control:
         label: "{{ item.name | default('Unnamed task') }}"
 
+    - name: Prepare normalized YAML
+      ansible.builtin.set_fact:
+        normalized_tasks_yaml: >-
+          {{ normalized_ai_tasks
+             | to_nice_yaml
+             | replace('.output', '.stdout') }}
+
+    - name: Save automation for execution
+      ansible.builtin.copy:
+        content: "{{ normalized_tasks_yaml }}"
+        dest: "{{ runtime_file }}"
+        mode: "0600"
+
+    # =====================================================
+    # PUBLISH ONLY WHEN GENERATING NEW AUTOMATION
+    # =====================================================
+
     - name: Generate unique filename
       ansible.builtin.set_fact:
         filename_base: >-
@@ -53,27 +135,15 @@
             | regex_replace('\.ya?ml$', '')
             | regex_replace('[^A-Za-z0-9_-]', '_')
           }}
+      when: automation_action == 'generate'
 
-    - name: Prepare generated filename and YAML
+    - name: Prepare generated filename
       ansible.builtin.set_fact:
         generated_filename: >-
           {{ filename_base }}_{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%S%N') }}.yml
-        normalized_tasks_yaml: >-
-          {{ normalized_ai_tasks
-             | to_nice_yaml
-             | replace('.output', '.stdout') }}
+      when: automation_action == 'generate'
 
-    - name: Define runtime file
-      ansible.builtin.set_fact:
-        generated_runtime_file: "/tmp/{{ generated_filename }}"
-
-    - name: Save generated tasks for execution
-      ansible.builtin.copy:
-        content: "{{ normalized_tasks_yaml }}"
-        dest: "{{ generated_runtime_file }}"
-        mode: "0600"
-
-    - name: Publish generated file to GitHub
+    - name: Publish new automation to GitHub
       ansible.builtin.uri:
         url: "{{ github_api }}/contents/playbooks/generated/{{ generated_filename }}"
         method: PUT
@@ -83,38 +153,35 @@
           X-GitHub-Api-Version: "2022-11-28"
         body_format: json
         body:
-          message: "AI generated Ansible automation: {{ generated_filename }}"
+          message: "AI generated automation: {{ generated_filename }}"
           content: "{{ normalized_tasks_yaml | b64encode }}"
           branch: "{{ github_branch }}"
-        status_code:
-          - 201
+        status_code: 201
         return_content: true
       register: github_result
       no_log: true
+      when: automation_action == 'generate'
 
-    - name: Display publication result
+    - name: Report automation selection
       ansible.builtin.debug:
         msg: >-
-          Published {{ generated_filename }}
-          to GitHub branch {{ github_branch }}
+          {{
+            'Reusing existing automation: ' ~ automation_file
+            if automation_action == 'reuse'
+            else 'Created and published: ' ~ generated_filename
+          }}
 
-    - name: Return generated file information
-      ansible.builtin.set_stats:
-        data:
-          generated_filename: "{{ generated_filename }}"
-          github_file_url: >-
-            https://github.com/Lucas-Marins/gitops/blob/ansible/playbooks/generated/{{ generated_filename }}
-          normalized_tasks_yaml: "{{ normalized_tasks_yaml }}"
-        aggregate: false
+# =========================================================
+# EXECUTE ON LINUX VM
+# =========================================================
 
-
-- name: Execute AI generated tasks on Linux VM
+- name: Execute selected automation on Linux VM
   hosts: linux-target-01
   gather_facts: false
   become: false
 
   tasks:
 
-    - name: Execute generated Ansible tasks
+    - name: Execute selected Ansible tasks
       ansible.builtin.include_tasks:
         file: "{{ hostvars['localhost']['generated_runtime_file'] }}"

@@ -1,0 +1,93 @@
+
+---
+- name: Publish AI generated Ansible tasks to GitHub
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    github_api: "https://api.github.com/repos/Lucas-Marins/gitops"
+    github_branch: "ansible"
+
+  tasks:
+
+    - name: Parse AI generated YAML
+      ansible.builtin.set_fact:
+        parsed_tasks: "{{ tasks_yaml | from_yaml }}"
+
+    - name: Extract task list
+      ansible.builtin.set_fact:
+        ai_tasks: >-
+          {{
+            parsed_tasks['tasks']
+            if parsed_tasks is mapping and 'tasks' in parsed_tasks
+            else parsed_tasks
+          }}
+
+    - name: Generate unique filename
+      ansible.builtin.set_fact:
+        filename_base: >-
+          {{
+            (filename | default('ai_generated_tasks'))
+            | regex_replace('\.ya?ml$', '')
+            | regex_replace('[^A-Za-z0-9_-]', '_')
+          }}
+
+    - name: Set generated filename
+      ansible.builtin.set_fact:
+        generated_filename: >-
+          {{ filename_base }}_{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%S%N') }}.yml
+        normalized_tasks_yaml: "{{ ai_tasks | to_nice_yaml | replace('.output', '.stdout') }}"
+
+    - name: Define runtime file
+      ansible.builtin.set_fact:
+        generated_runtime_file: "/tmp/{{ generated_filename }}"
+
+    - name: Save generated tasks for execution
+      ansible.builtin.copy:
+        content: "{{ normalized_tasks_yaml }}"
+        dest: "{{ generated_runtime_file }}"
+        mode: "0600"
+
+    - name: Publish generated file to GitHub
+      ansible.builtin.uri:
+        url: "{{ github_api }}/contents/playbooks/generated/{{ generated_filename }}"
+        method: PUT
+        headers:
+          Accept: "application/vnd.github+json"
+          Authorization: "Bearer {{ github_token }}"
+          X-GitHub-Api-Version: "2022-11-28"
+        body_format: json
+        body:
+          message: "AI generated Ansible automation: {{ generated_filename }}"
+          content: "{{ normalized_tasks_yaml | b64encode }}"
+          branch: "{{ github_branch }}"
+        status_code:
+          - 201
+        return_content: true
+      register: github_result
+      no_log: true
+
+    - name: Display publication result
+      ansible.builtin.debug:
+        msg: >-
+          Published {{ generated_filename }}
+          to GitHub branch {{ github_branch }}
+
+    - name: Return generated file information
+      ansible.builtin.set_stats:
+        data:
+          generated_filename: "{{ generated_filename }}"
+          github_file_url: >-
+            https://github.com/Lucas-Marins/gitops/blob/ansible/playbooks/generated/{{ generated_filename }}
+
+- name: Execute AI generated tasks on Linux VM
+  hosts: linux-target-01
+  gather_facts: false
+  become: false
+
+  tasks:
+
+    - name: Execute generated Ansible tasks
+      ansible.builtin.include_tasks:
+        file: "{{ hostvars['localhost']['generated_runtime_file'] }}"

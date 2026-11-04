@@ -29,7 +29,6 @@
         status_code: 200
         return_content: true
       register: token_response
-      no_log: true
 
     - name: Send GLPI event to Orchestrator EDA trigger
       ansible.builtin.uri:
@@ -43,7 +42,6 @@
         status_code: 202
         return_content: true
       register: webhook_response
-      no_log: true
 
     - name: Display Orchestrator execution information
       ansible.builtin.debug:

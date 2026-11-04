@@ -24,6 +24,7 @@
 #               webhook_path: "{{ webhook_path }}"
 #               event_payload: "{{ event.payload }}"
 
+
 ---
 - name: Receive GLPI webhook events
   hosts: all
@@ -35,9 +36,16 @@
         token: "{{ glpi_webhook_token }}"
 
   rules:
-    - name: Receive GLPI ticket events
-      condition: event.payload.source == "glpi"
+    - name: Receive GLPI ticket creation events
+      condition: event.payload.event == "new"
 
       action:
         debug:
-          msg: "{{ event.payload }}"
+          msg:
+            - "GLPI webhook received successfully!"
+            - "Event: {{ event.payload.event }}"
+            - "Ticket ID: {{ event.payload.item.id }}"
+            - "Ticket Title: {{ event.payload.item.name }}"
+            - "Ticket Description: {{ event.payload.item.content }}"
+            - "Requester: {{ event.payload.item.user_recipient.name }}"
+

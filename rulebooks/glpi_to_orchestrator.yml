@@ -1,6 +1,31 @@
 
+# - name: Receive GLPI webhooks and forward events to Orchestrator
+#   hosts: all
+
+#   sources:
+#     - ansible.eda.webhook:
+#         host: 0.0.0.0
+#         port: 5000
+#         token: "{{ glpi_webhook_token }}"
+
+#   rules:
+
+#     - name: Forward GLPI ticket creation events
+#       condition: >-
+#         event.payload.source == "glpi"
+#         and event.payload.automation_request is defined
+
+#       action:
+#         run_job_template:
+#           name: "JT-GLPI-FORWARD-TO-ORCHESTRATOR"
+#           organization: "Default"
+#           job_args:
+#             extra_vars:
+#               webhook_path: "{{ webhook_path }}"
+#               event_payload: "{{ event.payload }}"
+
 ---
-- name: Receive GLPI webhooks and forward events to Orchestrator
+- name: Receive GLPI webhook events
   hosts: all
 
   sources:
@@ -10,17 +35,9 @@
         token: "{{ glpi_webhook_token }}"
 
   rules:
-
-    - name: Forward GLPI ticket creation events
-      condition: >-
-        event.payload.source == "glpi"
-        and event.payload.automation_request is defined
+    - name: Receive GLPI ticket events
+      condition: event.payload.source == "glpi"
 
       action:
-        run_job_template:
-          name: "JT-GLPI-FORWARD-TO-ORCHESTRATOR"
-          organization: "Default"
-          job_args:
-            extra_vars:
-              webhook_path: "{{ webhook_path }}"
-              event_payload: "{{ event.payload }}"
+        debug:
+          msg: "{{ event.payload }}"

@@ -1,0 +1,4 @@
+-   changed_when: false
+    command: df -h /
+    name: Check root filesystem utilization
+    register: filesystem_info

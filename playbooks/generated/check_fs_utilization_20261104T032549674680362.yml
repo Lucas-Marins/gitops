@@ -1,0 +1,6 @@
+-   changed_when: false
+    command: df -h /
+    name: Check root filesystem utilization
+    register: fs_info
+-   debug:
+        msg: '{{ fs_info.stdout_lines | first }}'

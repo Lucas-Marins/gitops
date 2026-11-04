@@ -1,0 +1,3 @@
+-   changed_when: false
+    name: Get system uptime
+    shell: uptime

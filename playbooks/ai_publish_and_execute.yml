@@ -24,20 +24,44 @@
             else parsed_tasks
           }}
 
+    - name: Initialize normalized task list
+      ansible.builtin.set_fact:
+        normalized_ai_tasks: []
+
+    - name: Remove invalid output metadata
+      ansible.builtin.set_fact:
+        normalized_ai_tasks: >-
+          {{
+            normalized_ai_tasks
+            +
+            [
+              item
+              | dict2items
+              | rejectattr('key', 'equalto', 'output')
+              | items2dict
+            ]
+          }}
+      loop: "{{ ai_tasks }}"
+      loop_control:
+        label: "{{ item.name | default('Unnamed task') }}"
+
     - name: Generate unique filename
       ansible.builtin.set_fact:
         filename_base: >-
           {{
-            (filename | default('ai_generated_tasks'))
+            (filename | default('ai_generated_tasks', true))
             | regex_replace('\.ya?ml$', '')
             | regex_replace('[^A-Za-z0-9_-]', '_')
           }}
 
-    - name: Set generated filename
+    - name: Prepare generated filename and YAML
       ansible.builtin.set_fact:
         generated_filename: >-
           {{ filename_base }}_{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%S%N') }}.yml
-        normalized_tasks_yaml: "{{ ai_tasks | to_nice_yaml | replace('.output', '.stdout') }}"
+        normalized_tasks_yaml: >-
+          {{ normalized_ai_tasks
+             | to_nice_yaml
+             | replace('.output', '.stdout') }}
 
     - name: Define runtime file
       ansible.builtin.set_fact:
@@ -80,6 +104,9 @@
           generated_filename: "{{ generated_filename }}"
           github_file_url: >-
             https://github.com/Lucas-Marins/gitops/blob/ansible/playbooks/generated/{{ generated_filename }}
+          normalized_tasks_yaml: "{{ normalized_tasks_yaml }}"
+        aggregate: false
+
 
 - name: Execute AI generated tasks on Linux VM
   hosts: linux-target-01

@@ -1,0 +1,5 @@
+-   changed_when: false
+    command: df -h /
+    name: Check root filesystem utilization
+    output: json
+    register: root_fs_utilization

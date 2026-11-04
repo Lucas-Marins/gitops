@@ -1,4 +1,3 @@
-
 ---
 - name: Prepare AI generated or reused automation
   hosts: localhost
@@ -15,31 +14,108 @@
 
   tasks:
 
+    # =====================================================
+    # INITIAL VALIDATION
+    # =====================================================
+
     - name: Validate automation action
       ansible.builtin.assert:
         that:
+          - automation_action is defined
           - automation_action in ['reuse', 'generate']
-        fail_msg: "Unknown automation action."
+        fail_msg: "Unknown or missing automation action."
 
     - name: Define runtime file
       ansible.builtin.set_fact:
         generated_runtime_file: "{{ runtime_file }}"
 
     # =====================================================
+    # READ AUTOMATION CATALOG
+    # =====================================================
+
+    - name: Read automation catalog from GitHub
+      ansible.builtin.uri:
+        url: "{{ github_api }}/contents/{{ catalog_file }}?ref={{ github_branch }}"
+        method: GET
+        headers:
+          Accept: "application/vnd.github+json"
+          Authorization: "Bearer {{ github_token }}"
+          X-GitHub-Api-Version: "2022-11-28"
+        return_content: true
+        status_code: 200
+      register: catalog_response
+      no_log: true
+
+    - name: Decode automation catalog
+      ansible.builtin.set_fact:
+        catalog_sha: "{{ catalog_response.json.sha }}"
+        catalog_data: "{{ catalog_response.json.content | b64decode | from_yaml }}"
+
+    - name: Validate catalog structure
+      ansible.builtin.assert:
+        that:
+          - catalog_data is mapping
+          - catalog_data.automations is defined
+          - catalog_data.automations is sequence
+          - catalog_data.automations is not string
+        fail_msg: "The GitHub automation catalog has an unexpected YAML structure."
+
+    # =====================================================
+    # VALIDATE REUSE AGAINST GITHUB CATALOG
+    # =====================================================
+
+    - name: Validate existing automation parameters
+      ansible.builtin.assert:
+        that:
+          - automation_id is defined
+          - automation_id | length > 0
+          - automation_file is defined
+          - automation_file | length > 0
+        fail_msg: "Automation ID or file path was not provided."
+      when: automation_action == 'reuse'
+
+    - name: Find automation in catalog
+      ansible.builtin.set_fact:
+        reuse_matches: >-
+          {{
+            catalog_data.automations
+            | selectattr('id', 'equalto', automation_id)
+            | list
+          }}
+      when: automation_action == 'reuse'
+
+    - name: Check whether automation exists uniquely in catalog
+      ansible.builtin.assert:
+        that:
+          - reuse_matches | length == 1
+        fail_msg: >-
+          REUSE rejected. Automation ID {{ automation_id }}
+          does not exist uniquely in the GitHub catalog.
+      when: automation_action == 'reuse'
+
+    - name: Get trusted automation file path from catalog
+      ansible.builtin.set_fact:
+        reuse_catalog_file: "{{ reuse_matches[0].file | default('') }}"
+      when: automation_action == 'reuse'
+
+    - name: Validate automation file path against catalog
+      ansible.builtin.assert:
+        that:
+          - reuse_catalog_file | length > 0
+          - automation_file == reuse_catalog_file
+          - reuse_catalog_file is match('^playbooks/generated/[A-Za-z0-9._-]+\.ya?ml$')
+        fail_msg: >-
+          REUSE rejected. The requested automation file does not match
+          the file registered in the GitHub catalog.
+      when: automation_action == 'reuse'
+
+    # =====================================================
     # REUSE EXISTING AUTOMATION
     # =====================================================
 
-    - name: Validate existing automation path
-      ansible.builtin.assert:
-        that:
-          - automation_file is defined
-          - automation_file | length > 0
-        fail_msg: "Automation file was not provided."
-      when: automation_action == 'reuse'
-
     - name: Download existing automation from GitHub
       ansible.builtin.get_url:
-        url: "{{ github_raw }}/{{ automation_file }}"
+        url: "{{ github_raw }}/{{ reuse_catalog_file }}"
         dest: "{{ source_file }}"
         mode: "0600"
         force: true
@@ -71,6 +147,21 @@
           - summary is defined
           - summary | length > 0
         fail_msg: "Generated automation is missing required information."
+      when: automation_action == 'generate'
+
+    - name: Check whether generated automation ID already exists
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              catalog_data.automations
+              | selectattr('id', 'equalto', automation_id)
+              | list
+              | length
+            ) == 0
+        fail_msg: >-
+          This automation ID already exists in the catalog.
+          Generate a different automation_id.
       when: automation_action == 'generate'
 
     - name: Load generated YAML content
@@ -157,52 +248,6 @@
       when: automation_action == 'generate'
 
     # =====================================================
-    # READ EXISTING AUTOMATION CATALOG
-    # =====================================================
-
-    - name: Read automation catalog from GitHub
-      ansible.builtin.uri:
-        url: "{{ github_api }}/contents/{{ catalog_file }}?ref={{ github_branch }}"
-        method: GET
-        headers:
-          Accept: "application/vnd.github+json"
-          Authorization: "Bearer {{ github_token }}"
-          X-GitHub-Api-Version: "2022-11-28"
-        return_content: true
-        status_code: 200
-      register: catalog_response
-      no_log: true
-      when: automation_action == 'generate'
-
-    - name: Decode automation catalog
-      ansible.builtin.set_fact:
-        catalog_sha: "{{ catalog_response.json.sha }}"
-        catalog_data: "{{ catalog_response.json.content | b64decode | from_yaml }}"
-      when: automation_action == 'generate'
-
-    - name: Validate catalog structure
-      ansible.builtin.assert:
-        that:
-          - catalog_data is mapping
-          - catalog_data.automations is defined
-          - catalog_data.automations is sequence
-        fail_msg: "The GitHub automation catalog has an unexpected YAML structure."
-      when: automation_action == 'generate'
-
-    - name: Check whether automation ID already exists
-      ansible.builtin.assert:
-        that:
-          - >-
-            (
-              catalog_data.automations
-              | selectattr('id', 'equalto', automation_id)
-              | list
-              | length
-            ) == 0
-        fail_msg: "This automation ID already exists in the catalog. Generate a different automation_id."
-      when: automation_action == 'generate'
-
-    # =====================================================
     # PUBLISH NEW AUTOMATION FILE TO GITHUB
     # =====================================================
 
@@ -284,7 +329,7 @@
       ansible.builtin.debug:
         msg: >-
           {{
-            'Reusing existing automation: ' ~ automation_file
+            'Reusing validated automation: ' ~ reuse_catalog_file
             if automation_action == 'reuse'
             else
             'Created automation: ' ~ generated_github_path

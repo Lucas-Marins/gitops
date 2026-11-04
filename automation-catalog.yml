@@ -18,5 +18,7 @@ automations:
   description: Check the system uptime of a RHEL 9 server and display how long the
     system has been running.
   type: ansible_tasks
+  capabilities:
+  - uptime
   file: playbooks/generated/ai_generated_tasks_20261104T044129257509161.yml
   created_by: ai_task_agent

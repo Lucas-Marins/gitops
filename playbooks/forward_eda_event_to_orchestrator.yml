@@ -43,9 +43,14 @@
       ansible.builtin.set_fact:
         orchestrator_payload:
           source: "glpi"
+
+          request_id: >-
+            glpi-ticket-{{ event_payload.item.id }}-{{ event_payload.event | default('new') }}
+
           automation_request: "{{ automation_request }}"
+
           glpi:
-            ticket_id: "{{ event_payload.item.id }}"
+            ticket_id: "{{ event_payload.item.id | string }}"
             ticket_title: "{{ event_payload.item.name | default('') }}"
             event: "{{ event_payload.event | default('new') }}"
             requester: "{{ event_payload.item.user_recipient.name | default('unknown') }}"

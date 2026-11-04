@@ -1,7 +1,7 @@
 collections:
-- name: kubernetes.core
-- name: vmware.vmware_rest
+# - name: kubernetes.core
+# - name: vmware.vmware_rest
 - name: community.general
-- name: kubevirt.core
-- name: infra.convert2rhel
-- name: infra.leapp
+# - name: kubevirt.core
+# - name: infra.convert2rhel
+# - name: infra.leapp

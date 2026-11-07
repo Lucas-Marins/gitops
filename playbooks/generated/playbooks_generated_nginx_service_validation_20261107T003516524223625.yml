@@ -1,9 +1,0 @@
--   ansible.builtin.service_facts: null
-    changed_when: false
-    name: Check if nginx service is running
--   ansible.builtin.assert:
-        fail_msg: Nginx service is not running
-        success_msg: Nginx service is running
-        that:
-        - ansible_facts.services['nginx'].state == 'running'
-    name: Validate nginx service status

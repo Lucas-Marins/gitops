@@ -13,9 +13,3 @@ automations:
   - disk_usage
   - diagnostics
   created_by: ai_task_agent
-- id: nginx_service_validation
-  name: Nginx Service Validation
-  description: No existing automation covers the validation of the nginx service.
-  type: ansible_tasks
-  file: playbooks/generated/playbooks_generated_nginx_service_validation_20261107T003516524223625.yml
-  created_by: ai_task_agent

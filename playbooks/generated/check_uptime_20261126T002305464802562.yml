@@ -1,0 +1,8 @@
+-   ansible.builtin.shell: uptime
+    changed_when: false
+    name: Check system uptime
+    register: uptime_result
+-   ansible.builtin.debug:
+        msg: 'System uptime: {{ uptime_result.stdout }}'
+    changed_when: false
+    name: Debug uptime output

@@ -9,6 +9,11 @@
         verify_ssl: false
         
   rules:
+    - name: Debug do evento
+      condition: event.url_check is defined
+      action:
+        debug:
+          var: event.url_check
     - name: URL fora do ar - reiniciar httpd
       condition: event.url_check.status == "down"
       action:

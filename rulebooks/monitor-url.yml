@@ -5,7 +5,8 @@
     - ansible.eda.url_check:
         urls: 
          - https://vm-aap.apps.cluster-2kzb2.dyn.redhatworkshops.io/
-        delay: 50       
+        delay: 50
+        verify_ssl: false
         
   rules:
     - name: URL fora do ar - reiniciar httpd

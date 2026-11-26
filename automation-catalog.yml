@@ -13,3 +13,10 @@ automations:
   - disk_usage
   - diagnostics
   created_by: ai_task_agent
+- id: system_uptime_check
+  name: System Uptime Check
+  description: No existing automation in the catalog checks system uptime. The available
+    automation only audits filesystem utilization, which is unrelated to uptime monitoring.
+  type: ansible_tasks
+  file: playbooks/generated/check_uptime_20261126T002305464802562.yml
+  created_by: ai_task_agent

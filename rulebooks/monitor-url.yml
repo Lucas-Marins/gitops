@@ -4,8 +4,8 @@
   sources:
     - ansible.eda.url_check:
         urls: 
-         - https://vm-aap.apps.cluster-2kzb2.dyn.redhatworkshops.io
-        delay: 30        
+         - https://vm-aap.apps.cluster-2kzb2.dyn.redhatworkshops.io/
+        delay: 50       
         
   rules:
     - name: URL fora do ar - reiniciar httpd

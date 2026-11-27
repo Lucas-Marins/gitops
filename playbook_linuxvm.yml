@@ -10,9 +10,6 @@
 
     - name: Create devops users and add to group
       ansible.builtin.user:
-        name: "{{ item }}"
+        name: "{{ usr }}"
         groups: devops
         append: yes
-      loop:
-        - user1
-        - user2

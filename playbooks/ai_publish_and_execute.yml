@@ -341,7 +341,7 @@
 # =========================================================
 
 - name: Execute selected automation on Linux VM
-  hosts: linux-target-01
+  hosts: all
   gather_facts: false
   become: false
 

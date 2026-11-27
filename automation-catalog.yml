@@ -13,3 +13,10 @@ automations:
   - disk_usage
   - diagnostics
   created_by: ai_task_agent
+- id: check_server_uptime
+  name: Check Server Uptime
+  description: No existing automation in the catalog checks server uptime. The available
+    automation only checks filesystem utilization, which is unrelated to uptime monitoring.
+  type: ansible_tasks
+  file: playbooks/generated/check_server_uptime_20261127T140626939510245.yml
+  created_by: ai_task_agent
